@@ -45,6 +45,7 @@ static Test* s_test = nullptr;
 static Settings s_settings;
 static bool s_rightMouseDown = false;
 static b2Vec2 s_clickPointWS = b2Vec2_zero;
+static float s_displayScale = 1.0f;
 
 void glfwErrorCallback(int error, const char* description)
 {
@@ -113,7 +114,7 @@ static void CreateUI(GLFWwindow* window, const char* glslVersion = NULL)
 
 	if (fontPath)
 	{
-		ImGui::GetIO().Fonts->AddFontFromFileTTF(fontPath, 13.0f);
+		ImGui::GetIO().Fonts->AddFontFromFileTTF(fontPath, 14.0f * s_displayScale);
 	}
 }
 
@@ -350,11 +351,11 @@ static void ScrollCallback(GLFWwindow* window, double dx, double dy)
 
 static void UpdateUI()
 {
-	int menuWidth = 180;
+	float menuWidth = 180.0f * s_displayScale;
 	if (g_debugDraw.m_showUI)
 	{
-		ImGui::SetNextWindowPos(ImVec2((float)g_camera.m_width - menuWidth - 10, 10));
-		ImGui::SetNextWindowSize(ImVec2((float)menuWidth, (float)g_camera.m_height - 20));
+		ImGui::SetNextWindowPos({g_camera.m_width - menuWidth - 10.0f, 10.0f});
+		ImGui::SetNextWindowSize({menuWidth, g_camera.m_height - 20.0f});
 
 		ImGui::Begin("Tools", &g_debugDraw.m_showUI, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
@@ -523,6 +524,8 @@ int main(int, char**)
 		return -1;
 	}
 
+	glfwGetWindowContentScale(g_mainWindow, &s_displayScale, &s_displayScale);
+
 	glfwMakeContextCurrent(g_mainWindow);
 
 	// Load OpenGL functions using glad
@@ -530,7 +533,6 @@ int main(int, char**)
 	printf("GL %d.%d\n", GLAD_VERSION_MAJOR(version), GLAD_VERSION_MINOR(version));
 	printf("OpenGL %s, GLSL %s\n", glGetString(GL_VERSION), glGetString(GL_SHADING_LANGUAGE_VERSION));
 
-	glfwSetScrollCallback(g_mainWindow, ScrollCallback);
 	glfwSetWindowSizeCallback(g_mainWindow, ResizeWindowCallback);
 	glfwSetKeyCallback(g_mainWindow, KeyCallback);
 	glfwSetCharCallback(g_mainWindow, CharCallback);
