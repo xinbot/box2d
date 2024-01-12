@@ -153,19 +153,8 @@ inline int32 b2DistanceProxy::GetSupport(const b2Vec2& d) const
 
 inline const b2Vec2& b2DistanceProxy::GetSupportVertex(const b2Vec2& d) const
 {
-	int32 bestIndex = 0;
-	float bestValue = b2Dot(m_vertices[0], d);
-	for (int32 i = 1; i < m_count; ++i)
-	{
-		float value = b2Dot(m_vertices[i], d);
-		if (value > bestValue)
-		{
-			bestIndex = i;
-			bestValue = value;
-		}
-	}
-
-	return m_vertices[bestIndex];
+	int32 bestIndex = GetSupport(d);
+	return GetVertex(bestIndex);
 }
 
 #endif
