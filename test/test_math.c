@@ -15,7 +15,7 @@ int MathTest( void )
 {
 	for ( float t = -10.0f; t < 10.0f; t += 0.01f )
 	{
-		float angle = b2_pi * t;
+		float angle = B2_PI * t;
 		b2Rot r = b2MakeRot( angle );
 		float c = cosf( angle );
 		float s = sinf( angle );
@@ -27,14 +27,14 @@ int MathTest( void )
 
 		float xn = b2UnwindLargeAngle( angle );
 		float a = b2Atan2( s, c );
-		ENSURE( b2IsValid( a ) );
+		ENSURE( b2IsValidFloat( a ) );
 
 		float diff = b2AbsFloat( a - xn );
 
 		// The two results can be off by 360 degrees (-pi and pi)
-		if ( diff > b2_pi )
+		if ( diff > B2_PI )
 		{
-			diff -= 2.0f * b2_pi;
+			diff -= 2.0f * B2_PI;
 		}
 
 		// The approximate atan2 is quite accurate
@@ -48,7 +48,7 @@ int MathTest( void )
 			float a1 = b2Atan2( y, x );
 			float a2 = atan2f( y, x );
 			float diff = b2AbsFloat( a1 - a2 );
-			ENSURE( b2IsValid( a1 ) );
+			ENSURE( b2IsValidFloat( a1 ) );
 			ENSURE_SMALL( diff, ATAN_TOL );
 		}
 	}
@@ -57,7 +57,7 @@ int MathTest( void )
 		float a1 = b2Atan2( 1.0f, 0.0f );
 		float a2 = atan2f( 1.0f, 0.0f );
 		float diff = b2AbsFloat( a1 - a2 );
-		ENSURE( b2IsValid( a1 ) );
+		ENSURE( b2IsValidFloat( a1 ) );
 		ENSURE_SMALL( diff, ATAN_TOL );
 	}
 
@@ -65,7 +65,7 @@ int MathTest( void )
 		float a1 = b2Atan2( -1.0f, 0.0f );
 		float a2 = atan2f( -1.0f, 0.0f );
 		float diff = b2AbsFloat( a1 - a2 );
-		ENSURE( b2IsValid( a1 ) );
+		ENSURE( b2IsValidFloat( a1 ) );
 		ENSURE_SMALL( diff, ATAN_TOL );
 	}
 
@@ -73,7 +73,7 @@ int MathTest( void )
 		float a1 = b2Atan2( 0.0f, 1.0f );
 		float a2 = atan2f( 0.0f, 1.0f );
 		float diff = b2AbsFloat( a1 - a2 );
-		ENSURE( b2IsValid( a1 ) );
+		ENSURE( b2IsValidFloat( a1 ) );
 		ENSURE_SMALL( diff, ATAN_TOL );
 	}
 
@@ -81,7 +81,7 @@ int MathTest( void )
 		float a1 = b2Atan2( 0.0f, -1.0f );
 		float a2 = atan2f( 0.0f, -1.0f );
 		float diff = b2AbsFloat( a1 - a2 );
-		ENSURE( b2IsValid( a1 ) );
+		ENSURE( b2IsValidFloat( a1 ) );
 		ENSURE_SMALL( diff, ATAN_TOL );
 	}
 
@@ -89,7 +89,7 @@ int MathTest( void )
 		float a1 = b2Atan2( 0.0f, 0.0f );
 		float a2 = atan2f( 0.0f, 0.0f );
 		float diff = b2AbsFloat( a1 - a2 );
-		ENSURE( b2IsValid( a1 ) );
+		ENSURE( b2IsValidFloat( a1 ) );
 		ENSURE_SMALL( diff, ATAN_TOL );
 	}
 
@@ -123,6 +123,26 @@ int MathTest( void )
 
 	ENSURE_SMALL( v.x - two.x, 8.0f * FLT_EPSILON );
 	ENSURE_SMALL( v.y - two.y, 8.0f * FLT_EPSILON );
+
+	v = b2Normalize(( b2Vec2 ){ 0.2f, -0.5f });
+	for ( float y = -1.0f; y <= 1.0f; y += 0.01f )
+	{
+		for ( float x = -1.0f; x <= 1.0f; x += 0.01f )
+		{
+			if (x == 0.0f && y == 0.0f)
+			{
+				continue;
+			}
+
+			u = b2Normalize( ( b2Vec2 ){ x, y } );
+
+			b2Rot r = b2ComputeRotationBetweenUnitVectors( v, u );
+
+			b2Vec2 w = b2RotateVector( r, v );
+			ENSURE_SMALL( w.x - u.x, 4.0f * FLT_EPSILON );
+			ENSURE_SMALL( w.y - u.y, 4.0f * FLT_EPSILON );
+		}
+	}
 
 	return 0;
 }

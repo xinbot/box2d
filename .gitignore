@@ -6,3 +6,6 @@ CMakeSettings.json
 out/
 .vs/
 .DS_Store
+CMakeUserPresets.json
+.cache/
+.idea/

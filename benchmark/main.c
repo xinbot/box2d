@@ -4,6 +4,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "TaskScheduler_c.h"
+#include "benchmarks.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -25,19 +26,15 @@
 #define ARRAY_COUNT( A ) (int)( sizeof( A ) / sizeof( A[0] ) )
 #define MAYBE_UNUSED( x ) ( (void)( x ) )
 
-typedef b2WorldId CreateBenchmarkFcn( b2WorldDef* worldDef );
-extern b2WorldId JointGrid( b2WorldDef* worldDef );
-extern b2WorldId LargePyramid( b2WorldDef* worldDef );
-extern b2WorldId ManyPyramids( b2WorldDef* worldDef );
-extern b2WorldId Smash( b2WorldDef* worldDef );
-extern b2WorldId Spinner( b2WorldDef* worldDef );
-extern b2WorldId Tumbler( b2WorldDef* worldDef );
+typedef void CreateFcn( b2WorldId worldId );
+typedef float StepFcn( b2WorldId worldId, int stepCount );
 
 typedef struct Benchmark
 {
 	const char* name;
-	CreateBenchmarkFcn* createFcn;
-	int stepCount;
+	CreateFcn* createFcn;
+	StepFcn* stepFcn;
+	int totalStepCount;
 } Benchmark;
 
 #define MAX_TASKS 128
@@ -63,6 +60,8 @@ int GetNumberOfCores()
 #elif defined( __APPLE__ )
 	return (int)sysconf( _SC_NPROCESSORS_ONLN );
 #elif defined( __linux__ )
+	return (int)sysconf( _SC_NPROCESSORS_ONLN );
+#elif defined( __EMSCRIPTEN__ )
 	return (int)sysconf( _SC_NPROCESSORS_ONLN );
 #else
 	return 1;
@@ -115,21 +114,77 @@ static void FinishTask( void* userTask, void* userContext )
 	enkiWaitForTaskSet( scheduler, task );
 }
 
-// Box2D benchmark application. On Windows I recommend running this in an administrator command prompt. Don't use Windows Terminal.
-// Or use affinity. [0x01 0x02 0x04 0x08 0x10 0x20 0x40 0x80]
+static void MinProfile( b2Profile* p1, const b2Profile* p2 )
+{
+	p1->step = b2MinFloat( p1->step, p2->step );
+	p1->pairs = b2MinFloat( p1->pairs, p2->pairs );
+	p1->collide = b2MinFloat( p1->collide, p2->collide );
+	p1->solveConstraints = b2MinFloat( p1->solveConstraints, p2->solveConstraints );
+	p1->transforms = b2MinFloat( p1->transforms, p2->transforms );
+	p1->refit = b2MinFloat( p1->refit, p2->refit );
+	p1->sleepIslands = b2MinFloat( p1->sleepIslands, p2->sleepIslands );
+}
+
+// Box2D benchmark application. On Windows I recommend running this in an administrator command prompt. Don't use Windows
+// Terminal. Or use affinity. [0x01 0x02 0x04 0x08 0x10 0x20 0x40 0x80]
+// Examples:
 // start /affinity 0x5555 .\build\bin\Release\benchmark.exe -t=4 -w=4
+// start /affinity 0x5555 .\build\bin\Release\benchmark.exe -t=8
+// start /affinity 0x5555 .\build\bin\Release\benchmark.exe -t=4 -w=4 -b=3 -r=20 -s
+// start /affinity 0x5555 .\build\bin\Release\benchmark.exe -t=4 -w=4 -b=3 -r=1 -nc -s
+
 int main( int argc, char** argv )
 {
 	Benchmark benchmarks[] = {
-		{ "joint_grid", JointGrid, 500 },
-		{ "large_pyramid", LargePyramid, 500 },
-		{ "many_pyramids", ManyPyramids, 200 },
-		{ "smash", Smash, 300 },
-		{ "spinner", Spinner, 1400 },
-		{ "tumbler", Tumbler, 750 },
+		{ "joint_grid", CreateJointGrid, NULL, 500 },
+		{ "large_pyramid", CreateLargePyramid, NULL, 500 },
+		{ "many_pyramids", CreateManyPyramids, NULL, 200 },
+		{ "rain", CreateRain, StepRain, 1000 },
+		{ "smash", CreateSmash, NULL, 300 },
+		{ "spinner", CreateSpinner, StepSpinner, 1400 },
+		{ "tumbler", CreateTumbler, NULL, 750 },
 	};
 
 	int benchmarkCount = ARRAY_COUNT( benchmarks );
+
+	int maxSteps = benchmarks[0].totalStepCount;
+	for ( int i = 1; i < benchmarkCount; ++i )
+	{
+		maxSteps = b2MaxInt( maxSteps, benchmarks[i].totalStepCount );
+	}
+
+	b2Profile maxProfile = {
+		.step = FLT_MAX,
+		.pairs = FLT_MAX,
+		.collide = FLT_MAX,
+		.solve = FLT_MAX,
+		.mergeIslands = FLT_MAX,
+		.prepareStages = FLT_MAX,
+		.solveConstraints = FLT_MAX,
+		.prepareConstraints = FLT_MAX,
+		.integrateVelocities = FLT_MAX,
+		.warmStart = FLT_MAX,
+		.solveImpulses = FLT_MAX,
+		.integratePositions = FLT_MAX,
+		.relaxImpulses = FLT_MAX,
+		.applyRestitution = FLT_MAX,
+		.storeImpulses = FLT_MAX,
+		.splitIslands = FLT_MAX,
+		.transforms = FLT_MAX,
+		.hitEvents = FLT_MAX,
+		.refit = FLT_MAX,
+		.bullets = FLT_MAX,
+		.sleepIslands = FLT_MAX,
+	};
+
+	b2Profile* profiles = malloc( maxSteps * sizeof( b2Profile ) );
+	for ( int i = 0; i < maxSteps; ++i )
+	{
+		profiles[i] = maxProfile;
+	}
+
+	float* stepResults = malloc( maxSteps * sizeof( float ) );
+	memset( stepResults, 0, maxSteps * sizeof( float ) );
 
 	int maxThreadCount = GetNumberOfCores();
 	int runCount = 4;
@@ -137,6 +192,7 @@ int main( int argc, char** argv )
 	int singleWorkerCount = -1;
 	b2Counters counters = { 0 };
 	bool enableContinuous = true;
+	bool recordStepTimes = false;
 
 	assert( maxThreadCount <= THREAD_LIMIT );
 
@@ -159,7 +215,16 @@ int main( int argc, char** argv )
 		}
 		else if ( strncmp( arg, "-r=", 3 ) == 0 )
 		{
-			runCount = b2ClampInt(atoi( arg + 3 ), 1, 16);
+			runCount = b2ClampInt( atoi( arg + 3 ), 1, 1000 );
+		}
+		else if ( strncmp( arg, "-nc", 3 ) == 0 )
+		{
+			enableContinuous = false;
+			printf( "Continuous disabled\n" );
+		}
+		else if ( strncmp( arg, "-s", 3 ) == 0 )
+		{
+			recordStepTimes = true;
 		}
 		else if ( strcmp( arg, "-h" ) == 0 )
 		{
@@ -167,7 +232,8 @@ int main( int argc, char** argv )
 					"-t=<integer>: the maximum number of threads to use\n"
 					"-b=<integer>: run a single benchmark\n"
 					"-w=<integer>: run a single worker count\n"
-					"-r=<integer>: number of repeats (default is 4)\n" );
+					"-r=<integer>: number of repeats (default is 4)\n"
+					"-s: record step times\n" );
 			exit( 0 );
 		}
 	}
@@ -188,16 +254,18 @@ int main( int argc, char** argv )
 		}
 
 #ifdef NDEBUG
-		int stepCount = benchmarks[benchmarkIndex].stepCount;
+		int stepCount = benchmarks[benchmarkIndex].totalStepCount;
 #else
 		int stepCount = 10;
 #endif
+
+		Benchmark* benchmark = benchmarks + benchmarkIndex;
 
 		bool countersAcquired = false;
 
 		printf( "benchmark: %s, steps = %d\n", benchmarks[benchmarkIndex].name, stepCount );
 
-		float maxFps[THREAD_LIMIT] = { 0 };
+		float minTime[THREAD_LIMIT] = { 0 };
 
 		for ( int threadCount = 1; threadCount <= maxThreadCount; ++threadCount )
 		{
@@ -221,34 +289,59 @@ int main( int argc, char** argv )
 				}
 
 				b2WorldDef worldDef = b2DefaultWorldDef();
-				worldDef.enableSleep = false;
 				worldDef.enableContinuous = enableContinuous;
 				worldDef.enqueueTask = EnqueueTask;
 				worldDef.finishTask = FinishTask;
 				worldDef.workerCount = threadCount;
+				b2WorldId worldId = b2CreateWorld( &worldDef );
 
-				b2WorldId worldId = benchmarks[benchmarkIndex].createFcn( &worldDef );
+				benchmark->createFcn( worldId );
 
 				float timeStep = 1.0f / 60.0f;
 				int subStepCount = 4;
 
 				// Initial step can be expensive and skew benchmark
-				b2World_Step( worldId, timeStep, subStepCount );
-				taskCount = 0;
-
-				b2Timer timer = b2CreateTimer();
-
-				for ( int step = 0; step < stepCount; ++step )
+				if ( benchmark->stepFcn != NULL )
 				{
-					b2World_Step( worldId, timeStep, subStepCount );
-					taskCount = 0;
+					stepResults[0] = benchmark->stepFcn( worldId, 0 );
 				}
 
-				float ms = b2GetMilliseconds( &timer );
-				float fps = 1000.0f * stepCount / ms;
-				printf( "run %d : %g (ms), %g (fps)\n", runIndex, ms, fps );
+				assert( stepCount <= maxSteps );
 
-				maxFps[threadCount - 1] = b2MaxFloat( maxFps[threadCount - 1], fps );
+				b2World_Step( worldId, timeStep, subStepCount );
+
+				b2Profile profile = b2World_GetProfile( worldId );
+				MinProfile( profiles + 0, &profile );
+
+				taskCount = 0;
+
+				uint64_t ticks = b2GetTicks();
+
+				for ( int stepIndex = 1; stepIndex < stepCount; ++stepIndex )
+				{
+					if ( benchmark->stepFcn != NULL )
+					{
+						stepResults[stepIndex] = benchmark->stepFcn( worldId, stepIndex );
+					}
+
+					b2World_Step( worldId, timeStep, subStepCount );
+					taskCount = 0;
+
+					profile = b2World_GetProfile( worldId );
+					MinProfile( profiles + stepIndex, &profile );
+				}
+
+				float ms = b2GetMilliseconds( ticks );
+				printf( "run %d : %g (ms)\n", runIndex, ms );
+
+				if (runIndex == 0)
+				{
+					minTime[threadCount - 1] = ms ;
+				}
+				else
+				{
+					minTime[threadCount - 1] = b2MinFloat( minTime[threadCount - 1], ms );
+				}
 
 				if ( countersAcquired == false )
 				{
@@ -267,6 +360,26 @@ int main( int argc, char** argv )
 
 				enkiDeleteTaskScheduler( scheduler );
 				scheduler = NULL;
+
+			}
+
+			if ( recordStepTimes )
+			{
+				char fileName[64] = { 0 };
+				snprintf( fileName, 64, "%s_t%d.dat", benchmarks[benchmarkIndex].name, threadCount );
+				FILE* file = fopen( fileName, "w" );
+				if ( file == NULL )
+				{
+					continue;
+				}
+
+				for ( int stepIndex = 0; stepIndex < stepCount; ++stepIndex )
+				{
+					b2Profile p = profiles[stepIndex];
+					fprintf( file, "%g %g %g %g %g %g %g\n", p.step, p.pairs, p.collide, p.solveConstraints, p.transforms, p.refit, p.sleepIslands );
+				}
+
+				fclose( file );
 			}
 		}
 
@@ -281,10 +394,10 @@ int main( int argc, char** argv )
 			continue;
 		}
 
-		fprintf( file, "threads,fps\n" );
+		fprintf( file, "threads,ms\n" );
 		for ( int threadIndex = 1; threadIndex <= maxThreadCount; ++threadIndex )
 		{
-			fprintf( file, "%d,%g\n", threadIndex, maxFps[threadIndex - 1] );
+			fprintf( file, "%d,%g\n", threadIndex, minTime[threadIndex - 1] );
 		}
 
 		fclose( file );
@@ -292,6 +405,9 @@ int main( int argc, char** argv )
 
 	printf( "======================================\n" );
 	printf( "All Box2D benchmarks complete!\n" );
+
+	free( profiles );
+	free( stepResults );
 
 	return 0;
 }

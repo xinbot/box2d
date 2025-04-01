@@ -5,7 +5,8 @@
 
 #include "box2d/types.h"
 
-//
+struct ImFont;
+
 struct Camera
 {
 	Camera();
@@ -18,8 +19,8 @@ struct Camera
 
 	b2Vec2 m_center;
 	float m_zoom;
-	int32_t m_width;
-	int32_t m_height;
+	int m_width;
+	int m_height;
 };
 
 // This class implements Box2D debug drawing callbacks
@@ -65,6 +66,11 @@ public:
 	struct GLSolidCapsules* m_solidCapsules;
 	struct GLSolidPolygons* m_solidPolygons;
 	b2DebugDraw m_debugDraw;
+
+	ImFont* m_smallFont;
+	ImFont* m_regularFont;
+	ImFont* m_mediumFont;
+	ImFont* m_largeFont;
 };
 
 extern Draw g_draw;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "draw.h"
+#include "random.h"
 #include "sample.h"
 #include "settings.h"
 
@@ -11,6 +12,7 @@
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <stdlib.h>
 
 constexpr int SIMPLEX_CAPACITY = 20;
 
@@ -48,7 +50,7 @@ public:
 		m_transform = { { 1.5f, -1.5f }, b2Rot_identity };
 		m_angle = 0.0f;
 
-		m_cache = b2_emptyDistanceCache;
+		m_cache = b2_emptySimplexCache;
 		m_simplexCount = 0;
 		m_startPoint = { 0.0f, 0.0f };
 		m_basePosition = { 0.0f, 0.0f };
@@ -69,9 +71,9 @@ public:
 		m_proxyB = MakeProxy( m_typeB, m_radiusB );
 	}
 
-	b2DistanceProxy MakeProxy( ShapeType type, float radius )
+	b2ShapeProxy MakeProxy( ShapeType type, float radius )
 	{
-		b2DistanceProxy proxy = {};
+		b2ShapeProxy proxy = {};
 		proxy.radius = radius;
 
 		switch ( type )
@@ -194,7 +196,7 @@ public:
 		ImGui::SliderFloat( "x offset", &m_transform.p.x, -2.0f, 2.0f, "%.2f" );
 		ImGui::SliderFloat( "y offset", &m_transform.p.y, -2.0f, 2.0f, "%.2f" );
 
-		if ( ImGui::SliderFloat( "angle", &m_angle, -b2_pi, b2_pi, "%.2f" ) )
+		if ( ImGui::SliderFloat( "angle", &m_angle, -B2_PI, B2_PI, "%.2f" ) )
 		{
 			m_transform.q = b2MakeRot( m_angle );
 		}
@@ -258,7 +260,7 @@ public:
 		else if ( m_rotating )
 		{
 			float dx = p.x - m_startPoint.x;
-			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -b2_pi, b2_pi );
+			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -B2_PI, B2_PI );
 			m_transform.q = b2MakeRot( m_angle );
 		}
 	}
@@ -408,10 +410,10 @@ public:
 	ShapeType m_typeB;
 	float m_radiusA;
 	float m_radiusB;
-	b2DistanceProxy m_proxyA;
-	b2DistanceProxy m_proxyB;
+	b2ShapeProxy m_proxyA;
+	b2ShapeProxy m_proxyB;
 
-	b2DistanceCache m_cache;
+	b2SimplexCache m_cache;
 	b2Simplex m_simplexes[SIMPLEX_CAPACITY];
 	int m_simplexCount;
 	int m_simplexIndex;
@@ -516,7 +518,6 @@ public:
 
 		float y = -4.0f;
 
-		bool isStatic = false;
 		m_tree = b2DynamicTree_Create();
 
 		const b2Vec2 aabbMargin = { 0.1f, 0.1f };
@@ -527,15 +528,15 @@ public:
 
 			for ( int j = 0; j < m_columnCount; ++j )
 			{
-				float fillTest = RandomFloat( 0.0f, 1.0f );
+				float fillTest = RandomFloatRange( 0.0f, 1.0f );
 				if ( fillTest <= m_fill )
 				{
 					assert( m_proxyCount <= m_proxyCapacity );
 					Proxy* p = m_proxies + m_proxyCount;
 					p->position = { x, y };
 
-					float ratio = RandomFloat( 1.0f, m_ratio );
-					float width = RandomFloat( 0.1f, 0.5f );
+					float ratio = RandomFloatRange( 1.0f, m_ratio );
+					float width = RandomFloatRange( 0.1f, 0.5f );
 					if ( RandomFloat() > 0.0f )
 					{
 						p->width.x = ratio * width;
@@ -552,7 +553,7 @@ public:
 					p->fatBox.lowerBound = b2Sub( p->box.lowerBound, aabbMargin );
 					p->fatBox.upperBound = b2Add( p->box.upperBound, aabbMargin );
 
-					p->proxyId = b2DynamicTree_CreateProxy( &m_tree, p->fatBox, b2_defaultCategoryBits, m_proxyCount );
+					p->proxyId = b2DynamicTree_CreateProxy( &m_tree, p->fatBox, B2_DEFAULT_CATEGORY_BITS, m_proxyCount );
 					p->rayStamp = -1;
 					p->queryStamp = -1;
 					p->moved = false;
@@ -680,7 +681,7 @@ public:
 		if ( m_queryDrag )
 		{
 			b2AABB box = { b2Min( m_startPoint, m_endPoint ), b2Max( m_startPoint, m_endPoint ) };
-			b2DynamicTree_Query( &m_tree, box, b2_defaultMaskBits, QueryCallback, this );
+			b2DynamicTree_Query( &m_tree, box, B2_DEFAULT_MASK_BITS, QueryCallback, this );
 
 			g_draw.DrawAABB( box, b2_colorWhite );
 		}
@@ -691,7 +692,7 @@ public:
 		if ( m_rayDrag )
 		{
 			b2RayCastInput input = { m_startPoint, b2Sub( m_endPoint, m_startPoint ), 1.0f };
-			b2TreeStats result = b2DynamicTree_RayCast( &m_tree, &input, b2_defaultMaskBits, RayCallback, this );
+			b2TreeStats result = b2DynamicTree_RayCast( &m_tree, &input, B2_DEFAULT_MASK_BITS, RayCallback, this );
 
 			g_draw.DrawSegment( m_startPoint, m_endPoint, b2_colorWhite );
 			g_draw.DrawPoint( m_startPoint, 5.0f, b2_colorGreen );
@@ -719,7 +720,7 @@ public:
 				g_draw.DrawAABB( p->box, c );
 			}
 
-			float moveTest = RandomFloat( 0.0f, 1.0f );
+			float moveTest = RandomFloatRange( 0.0f, 1.0f );
 			if ( m_moveFraction > moveTest )
 			{
 				float dx = m_moveDelta * RandomFloat();
@@ -754,7 +755,7 @@ public:
 		{
 			case Update_Incremental:
 			{
-				b2Timer timer = b2CreateTimer();
+				uint64_t ticks = b2GetTicks();
 				for ( int i = 0; i < m_proxyCount; ++i )
 				{
 					Proxy* p = m_proxies + i;
@@ -763,7 +764,7 @@ public:
 						b2DynamicTree_MoveProxy( &m_tree, p->proxyId, p->fatBox );
 					}
 				}
-				float ms = b2GetMilliseconds( &timer );
+				float ms = b2GetMilliseconds( ticks );
 				g_draw.DrawString( 5, m_textLine, "incremental : %.3f ms", ms );
 				m_textLine += m_textIncrement;
 			}
@@ -780,9 +781,9 @@ public:
 					}
 				}
 
-				b2Timer timer = b2CreateTimer();
+				uint64_t ticks = b2GetTicks();
 				int boxCount = b2DynamicTree_Rebuild( &m_tree, true );
-				float ms = b2GetMilliseconds( &timer );
+				float ms = b2GetMilliseconds( ticks );
 				g_draw.DrawString( 5, m_textLine, "full build %d : %.3f ms", boxCount, ms );
 				m_textLine += m_textIncrement;
 			}
@@ -799,9 +800,9 @@ public:
 					}
 				}
 
-				b2Timer timer = b2CreateTimer();
+				uint64_t ticks = b2GetTicks();
 				int boxCount = b2DynamicTree_Rebuild( &m_tree, false );
-				float ms = b2GetMilliseconds( &timer );
+				float ms = b2GetMilliseconds( ticks );
 				g_draw.DrawString( 5, m_textLine, "partial rebuild %d : %.3f ms", boxCount, ms );
 				m_textLine += m_textIncrement;
 			}
@@ -924,7 +925,7 @@ public:
 		ImGui::SliderFloat( "x offset", &m_transform.p.x, -2.0f, 2.0f, "%.2f" );
 		ImGui::SliderFloat( "y offset", &m_transform.p.y, -2.0f, 2.0f, "%.2f" );
 
-		if ( ImGui::SliderFloat( "angle", &m_angle, -b2_pi, b2_pi, "%.2f" ) )
+		if ( ImGui::SliderFloat( "angle", &m_angle, -B2_PI, B2_PI, "%.2f" ) )
 		{
 			m_transform.q = b2MakeRot( m_angle );
 		}
@@ -1000,7 +1001,7 @@ public:
 		else if ( m_rotating )
 		{
 			float dx = p.x - m_startPosition.x;
-			m_angle = b2ClampFloat( m_baseAngle + 0.5f * dx, -b2_pi, b2_pi );
+			m_angle = b2ClampFloat( m_baseAngle + 0.5f * dx, -B2_PI, B2_PI );
 			m_transform.q = b2MakeRot( m_angle );
 		}
 	}
@@ -1054,7 +1055,7 @@ public:
 
 		b2HexColor color1 = b2_colorYellow;
 
-		b2CastOutput output = { 0 };
+		b2CastOutput output = { };
 		float maxFraction = 1.0f;
 
 		// circle
@@ -1465,12 +1466,27 @@ public:
 			m_bodyIds[m_bodyIndex] = b2_nullBodyId;
 		}
 
-		float x = RandomFloat( -20.0f, 20.0f );
-		float y = RandomFloat( 0.0f, 20.0f );
+		float x = RandomFloatRange( -20.0f, 20.0f );
+		float y = RandomFloatRange( 0.0f, 20.0f );
 
 		b2BodyDef bodyDef = b2DefaultBodyDef();
 		bodyDef.position = { x, y };
-		bodyDef.rotation = b2MakeRot( RandomFloat( -b2_pi, b2_pi ) );
+		bodyDef.rotation = b2MakeRot( RandomFloatRange( -B2_PI, B2_PI ) );
+
+		int mod = m_bodyIndex % 3;
+		if ( mod == 0 )
+		{
+			bodyDef.type = b2_staticBody;
+		}
+		else if ( mod == 1 )
+		{
+			bodyDef.type = b2_kinematicBody;
+		}
+		else if ( mod == 2 )
+		{
+			bodyDef.type = b2_dynamicBody;
+			bodyDef.gravityScale = 0.0f;
+		}
 
 		m_bodyIds[m_bodyIndex] = b2CreateBody( m_worldId, &bodyDef );
 
@@ -1658,7 +1674,7 @@ public:
 		m_textLine += m_textIncrement;
 
 		b2HexColor color1 = b2_colorGreen;
-		b2HexColor color2 = b2_colorGray8;
+		b2HexColor color2 = b2_colorLightGray;
 		b2HexColor color3 = b2_colorMagenta;
 
 		b2Vec2 rayTranslation = b2Sub( m_rayEnd, m_rayStart );
@@ -1711,7 +1727,7 @@ public:
 										RayCastSortedCallback };
 			b2CastResultFcn* modeFcn = fcns[m_mode];
 
-			RayCastContext context = { 0 };
+			RayCastContext context = { };
 
 			// Must initialize fractions for sorting
 			context.fractions[0] = FLT_MAX;
@@ -1815,9 +1831,9 @@ public:
 	}
 
 	int m_bodyIndex;
-	b2BodyId m_bodyIds[e_maxCount];
-	ShapeUserData m_userData[e_maxCount];
-	b2Polygon m_polygons[4];
+	b2BodyId m_bodyIds[e_maxCount] = {};
+	ShapeUserData m_userData[e_maxCount] = {};
+	b2Polygon m_polygons[4] = {};
 	b2Capsule m_capsule;
 	b2Circle m_circle;
 	b2Segment m_segment;
@@ -1951,12 +1967,12 @@ public:
 			m_bodyIds[m_bodyIndex] = b2_nullBodyId;
 		}
 
-		float x = RandomFloat( -20.0f, 20.0f );
-		float y = RandomFloat( 0.0f, 20.0f );
+		float x = RandomFloatRange( -20.0f, 20.0f );
+		float y = RandomFloatRange( 0.0f, 20.0f );
 
 		b2BodyDef bodyDef = b2DefaultBodyDef();
 		bodyDef.position = { x, y };
-		bodyDef.rotation = b2MakeRot( RandomFloat( -b2_pi, b2_pi ) );
+		bodyDef.rotation = b2MakeRot( RandomFloatRange( -B2_PI, B2_PI ) );
 
 		m_bodyIds[m_bodyIndex] = b2CreateBody( m_worldId, &bodyDef );
 
@@ -2145,7 +2161,7 @@ public:
 		{
 			b2World_OverlapPolygon( m_worldId, &m_queryBox, transform, b2DefaultQueryFilter(), OverlapWorld::OverlapResultFcn,
 									this );
-			b2Vec2 points[b2_maxPolygonVertices] = { 0 };
+			b2Vec2 points[B2_MAX_POLYGON_VERTICES] = { };
 			for ( int i = 0; i < m_queryBox.count; ++i )
 			{
 				points[i] = b2TransformPoint( transform, m_queryBox.vertices[i] );
@@ -2229,10 +2245,10 @@ public:
 			g_camera.m_zoom = 25.0f * 0.45f;
 		}
 
-		m_smgroxCache1 = b2_emptyDistanceCache;
-		m_smgroxCache2 = b2_emptyDistanceCache;
-		m_smgcapCache1 = b2_emptyDistanceCache;
-		m_smgcapCache2 = b2_emptyDistanceCache;
+		m_smgroxCache1 = b2_emptySimplexCache;
+		m_smgroxCache2 = b2_emptySimplexCache;
+		m_smgcapCache1 = b2_emptySimplexCache;
+		m_smgcapCache2 = b2_emptySimplexCache;
 
 		m_transform = b2Transform_identity;
 		m_transform.p.x = 1.0f;
@@ -2267,7 +2283,7 @@ public:
 		ImGui::SliderFloat( "x offset", &m_transform.p.x, -2.0f, 2.0f, "%.2f" );
 		ImGui::SliderFloat( "y offset", &m_transform.p.y, -2.0f, 2.0f, "%.2f" );
 
-		if ( ImGui::SliderFloat( "angle", &m_angle, -b2_pi, b2_pi, "%.2f" ) )
+		if ( ImGui::SliderFloat( "angle", &m_angle, -B2_PI, B2_PI, "%.2f" ) )
 		{
 			m_transform.q = b2MakeRot( m_angle );
 		}
@@ -2330,7 +2346,7 @@ public:
 		else if ( m_rotating )
 		{
 			float dx = p.x - m_startPoint.x;
-			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -b2_pi, b2_pi );
+			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -B2_PI, B2_PI );
 			m_transform.q = b2MakeRot( m_angle );
 		}
 	}
@@ -2352,7 +2368,7 @@ public:
 			}
 			else
 			{
-				g_draw.DrawPoint( p1, 5.0f, b2_colorBlue );
+				g_draw.DrawPoint( p1, 10.0f, b2_colorBlue );
 			}
 
 			if ( m_showIds )
@@ -2377,14 +2393,14 @@ public:
 		b2Vec2 increment = { 4.0f, 0.0f };
 
 		b2HexColor color1 = b2_colorAquamarine;
-		b2HexColor color2 = b2_colorPaleGoldenrod;
+		b2HexColor color2 = b2_colorPaleGoldenRod;
 
 		if ( m_enableCaching == false )
 		{
-			m_smgroxCache1 = b2_emptyDistanceCache;
-			m_smgroxCache2 = b2_emptyDistanceCache;
-			m_smgcapCache1 = b2_emptyDistanceCache;
-			m_smgcapCache2 = b2_emptyDistanceCache;
+			m_smgroxCache1 = b2_emptySimplexCache;
+			m_smgroxCache2 = b2_emptySimplexCache;
+			m_smgcapCache1 = b2_emptySimplexCache;
+			m_smgcapCache2 = b2_emptySimplexCache;
 		}
 
 		// circle-circle
@@ -2492,7 +2508,7 @@ public:
 		// box-capsule
 		{
 			b2Capsule capsule = { { -0.4f, 0.0f }, { -0.1f, 0.0f }, 0.1f };
-			b2Polygon box = b2MakeOffsetBox( 0.25f, 1.0f, { 1.0f, -1.0f }, b2MakeRot( 0.25f * b2_pi ) );
+			b2Polygon box = b2MakeOffsetBox( 0.25f, 1.0f, { 1.0f, -1.0f }, b2MakeRot( 0.25f * B2_PI ) );
 
 			b2Transform transform1 = { offset, b2Rot_identity };
 			b2Transform transform2 = { b2Add( m_transform.p, offset ), m_transform.q };
@@ -2534,6 +2550,24 @@ public:
 		}
 
 		offset = { -10.0f, 0.0f };
+
+		// square-square
+		{
+			b2Polygon box1 = b2MakeSquare( 0.5f );
+			b2Polygon box = b2MakeSquare( 0.5f );
+
+			b2Transform transform1 = { offset, b2Rot_identity };
+			b2Transform transform2 = { b2Add( m_transform.p, offset ), m_transform.q };
+
+			b2Manifold m = b2CollidePolygons( &box1, transform1, &box, transform2 );
+
+			g_draw.DrawSolidPolygon( transform1, box1.vertices, box1.count, box1.radius, color1 );
+			g_draw.DrawSolidPolygon( transform2, box.vertices, box.count, box.radius, color2 );
+
+			DrawManifold( &m, transform1.p, transform2.p );
+
+			offset = b2Add( offset, increment );
+		}
 
 		// box-box
 		{
@@ -2727,7 +2761,6 @@ public:
 			b2Manifold m2 = b2CollideChainSegmentAndPolygon( &segment2, transform1, &rox, transform2, &m_smgroxCache2 );
 
 			{
-				b2Vec2 g1 = b2TransformPoint( transform1, segment1.ghost1 );
 				b2Vec2 g2 = b2TransformPoint( transform1, segment1.ghost2 );
 				b2Vec2 p1 = b2TransformPoint( transform1, segment1.segment.point1 );
 				b2Vec2 p2 = b2TransformPoint( transform1, segment1.segment.point2 );
@@ -2739,7 +2772,6 @@ public:
 
 			{
 				b2Vec2 g1 = b2TransformPoint( transform1, segment2.ghost1 );
-				b2Vec2 g2 = b2TransformPoint( transform1, segment2.ghost2 );
 				b2Vec2 p1 = b2TransformPoint( transform1, segment2.segment.point1 );
 				b2Vec2 p2 = b2TransformPoint( transform1, segment2.segment.point2 );
 				g_draw.DrawSegment( g1, p1, b2_colorLightGray );
@@ -2770,7 +2802,6 @@ public:
 			b2Manifold m2 = b2CollideChainSegmentAndCapsule( &segment2, transform1, &capsule, transform2, &m_smgcapCache2 );
 
 			{
-				b2Vec2 g1 = b2TransformPoint( transform1, segment1.ghost1 );
 				b2Vec2 g2 = b2TransformPoint( transform1, segment1.ghost2 );
 				b2Vec2 p1 = b2TransformPoint( transform1, segment1.segment.point1 );
 				b2Vec2 p2 = b2TransformPoint( transform1, segment1.segment.point2 );
@@ -2783,7 +2814,6 @@ public:
 
 			{
 				b2Vec2 g1 = b2TransformPoint( transform1, segment2.ghost1 );
-				b2Vec2 g2 = b2TransformPoint( transform1, segment2.ghost2 );
 				b2Vec2 p1 = b2TransformPoint( transform1, segment2.segment.point1 );
 				b2Vec2 p2 = b2TransformPoint( transform1, segment2.segment.point2 );
 				g_draw.DrawSegment( g1, p1, b2_colorLightGray );
@@ -2811,10 +2841,10 @@ public:
 		return new Manifold( settings );
 	}
 
-	b2DistanceCache m_smgroxCache1;
-	b2DistanceCache m_smgroxCache2;
-	b2DistanceCache m_smgcapCache1;
-	b2DistanceCache m_smgcapCache2;
+	b2SimplexCache m_smgroxCache1;
+	b2SimplexCache m_smgroxCache2;
+	b2SimplexCache m_smgcapCache1;
+	b2SimplexCache m_smgcapCache2;
 
 	b2Hull m_wedge;
 
@@ -2952,7 +2982,7 @@ public:
 		ImGui::SliderFloat( "x Offset", &m_transform.p.x, -2.0f, 2.0f, "%.2f" );
 		ImGui::SliderFloat( "y Offset", &m_transform.p.y, -2.0f, 2.0f, "%.2f" );
 
-		if ( ImGui::SliderFloat( "Angle", &m_angle, -b2_pi, b2_pi, "%.2f" ) )
+		if ( ImGui::SliderFloat( "Angle", &m_angle, -B2_PI, B2_PI, "%.2f" ) )
 		{
 			m_transform.q = b2MakeRot( m_angle );
 		}
@@ -3015,7 +3045,7 @@ public:
 		else if ( m_rotating )
 		{
 			float dx = p.x - m_startPoint.x;
-			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -b2_pi, b2_pi );
+			m_angle = b2ClampFloat( m_baseAngle + 1.0f * dx, -B2_PI, B2_PI );
 			m_transform.q = b2MakeRot( m_angle );
 		}
 	}
@@ -3094,7 +3124,7 @@ public:
 			for ( int i = 0; i < m_count; ++i )
 			{
 				const b2ChainSegment* segment = m_segments + i;
-				b2DistanceCache cache = {};
+				b2SimplexCache cache = {};
 				b2Manifold m = b2CollideChainSegmentAndPolygon( segment, transform1, &rox, transform2, &cache );
 				DrawManifold( &m );
 			}
@@ -3180,7 +3210,7 @@ public:
 		m_radiusB = 0.25f;
 
 		m_transformA.p = { 0.0f, 0.0 };
-		m_transformA.q = b2MakeRot( 0.25f * b2_pi );
+		m_transformA.q = b2MakeRot( 0.25f * B2_PI );
 		m_transformB.p = { -8.0f, 0.0f };
 		m_transformB.q = b2Rot_identity;
 		m_translationB = { 8.0f, 0.0f };
@@ -3271,7 +3301,7 @@ public:
 	{
 		Sample::Step( settings );
 
-		b2ShapeCastPairInput input = { 0 };
+		b2ShapeCastPairInput input = { };
 		input.proxyA = b2MakeProxy( m_vAs, m_countA, m_radiusA );
 		input.proxyB = b2MakeProxy( m_vBs, m_countB, m_radiusB );
 		input.transformA = m_transformA;
@@ -3291,7 +3321,7 @@ public:
 		distanceInput.transformA = m_transformA;
 		distanceInput.transformB = transformB2;
 		distanceInput.useRadii = false;
-		b2DistanceCache distanceCache;
+		b2SimplexCache distanceCache;
 		distanceCache.count = 0;
 		b2DistanceOutput distanceOutput = b2ShapeDistance( &distanceCache, &distanceInput, nullptr, 0 );
 
@@ -3299,7 +3329,7 @@ public:
 						   output.iterations, output.fraction, distanceOutput.distance );
 		m_textLine += m_textIncrement;
 
-		b2Vec2 vertices[b2_maxPolygonVertices];
+		b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
 
 		for ( int i = 0; i < m_countA; ++i )
 		{
@@ -3310,16 +3340,16 @@ public:
 		{
 			if ( m_radiusA > 0.0f )
 			{
-				g_draw.DrawSolidCircle( b2Transform_identity, vertices[0], m_radiusA, b2_colorGray9 );
+				g_draw.DrawSolidCircle( b2Transform_identity, vertices[0], m_radiusA, b2_colorLightGray );
 			}
 			else
 			{
-				g_draw.DrawPoint( vertices[0], 5.0f, b2_colorGray9 );
+				g_draw.DrawPoint( vertices[0], 5.0f, b2_colorLightGray );
 			}
 		}
 		else
 		{
-			g_draw.DrawSolidPolygon( b2Transform_identity, vertices, m_countA, m_radiusA, b2_colorGray9 );
+			g_draw.DrawSolidPolygon( b2Transform_identity, vertices, m_countA, m_radiusA, b2_colorLightGray );
 		}
 
 		for ( int i = 0; i < m_countB; ++i )
@@ -3375,11 +3405,11 @@ public:
 		g_draw.DrawSegment( m_transformB.p, b2Add( m_transformB.p, m_translationB ), b2_colorGray );
 	}
 
-	b2Vec2 m_vAs[b2_maxPolygonVertices];
+	b2Vec2 m_vAs[B2_MAX_POLYGON_VERTICES];
 	int m_countA;
 	float m_radiusA;
 
-	b2Vec2 m_vBs[b2_maxPolygonVertices];
+	b2Vec2 m_vBs[B2_MAX_POLYGON_VERTICES];
 	int m_countB;
 	float m_radiusB;
 
@@ -3400,7 +3430,8 @@ public:
 		if ( settings.restart == false )
 		{
 			g_camera.m_center = { 0.6f, 2.0f };
-			g_camera.m_zoom = 25.0f * 0.18f;
+			g_camera.m_center = { -16, 45 };
+			g_camera.m_zoom = 5.0f;
 		}
 	}
 
@@ -3413,26 +3444,34 @@ public:
 	{
 		Sample::Step( settings );
 
-		b2Sweep sweepA = { b2Vec2_zero, { 0.0f, 0.0f }, { 0.0f, 0.0f }, b2Rot_identity, b2Rot_identity };
-		b2Sweep sweepB = { b2Vec2_zero, { 2.0f, 4.0f }, { 2.0f, 4.0f }, b2Rot_identity, b2MakeRot( -0.25f * b2_pi ) };
+		b2Sweep sweepA = {
+			b2Vec2_zero, { 0.0f, 0.0f }, { 0.0f, 0.0f }, b2Rot_identity, b2Rot_identity,
+		};
+		b2Sweep sweepB = {
+			b2Vec2_zero,
+			{ -15.8332710, 45.3520279 },
+			{ -15.8324337, 45.3413048 },
+			{ -0.540891349, 0.841092527 },
+			{ -0.457797021, 0.889056742 },
+		};
 
 		b2TOIInput input;
-		input.proxyA = b2MakeProxy( m_verticesA, m_countA, 0.0f );
-		input.proxyB = b2MakeProxy( m_verticesB, m_countB, 0.0f );
+		input.proxyA = b2MakeProxy( m_verticesA, m_countA, m_radiusA );
+		input.proxyB = b2MakeProxy( m_verticesB, m_countB, m_radiusB );
 		input.sweepA = sweepA;
 		input.sweepB = sweepB;
-		input.tMax = 1.0f;
+		input.maxFraction = 1.0f;
 
 		b2TOIOutput output = b2TimeOfImpact( &input );
 
-		g_draw.DrawString( 5, m_textLine, "toi = %g", output.t );
+		g_draw.DrawString( 5, m_textLine, "toi = %g", output.fraction );
 		m_textLine += m_textIncrement;
 
 		// g_draw.DrawString(5, m_textLine, "max toi iters = %d, max root iters = %d", b2_toiMaxIters,
 		//                        b2_toiMaxRootIters);
 		m_textLine += m_textIncrement;
 
-		b2Vec2 vertices[b2_maxPolygonVertices];
+		b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
 
 		// Draw A
 		b2Transform transformA = b2GetSweepTransform( &sweepA, 0.0f );
@@ -3448,10 +3487,11 @@ public:
 		{
 			vertices[i] = b2TransformPoint( transformB, m_verticesB[i] );
 		}
-		g_draw.DrawPolygon( vertices, m_countB, b2_colorGreen );
+		g_draw.DrawSolidCapsule( vertices[0], vertices[1], m_radiusB, b2_colorGreen );
+		// g_draw.DrawPolygon( vertices, m_countB, b2_colorGreen );
 
 		// Draw B at t = hit_time
-		transformB = b2GetSweepTransform( &sweepB, output.t );
+		transformB = b2GetSweepTransform( &sweepB, output.fraction );
 		for ( int i = 0; i < m_countB; ++i )
 		{
 			vertices[i] = b2TransformPoint( transformB, m_verticesB[i] );
@@ -3464,19 +3504,20 @@ public:
 		{
 			vertices[i] = b2TransformPoint( transformB, m_verticesB[i] );
 		}
-		g_draw.DrawPolygon( vertices, m_countB, b2_colorRed );
+		g_draw.DrawSolidCapsule( vertices[0], vertices[1], m_radiusB, b2_colorRed );
+		// g_draw.DrawPolygon( vertices, m_countB, b2_colorRed );
 
 		if ( output.state == b2_toiStateHit )
 		{
-			b2DistanceInput dinput;
-			dinput.proxyA = input.proxyA;
-			dinput.proxyB = input.proxyB;
-			dinput.transformA = b2GetSweepTransform( &sweepA, output.t );
-			dinput.transformB = b2GetSweepTransform( &sweepB, output.t );
-			dinput.useRadii = false;
-			b2DistanceCache cache = { 0 };
-			b2DistanceOutput doutput = b2ShapeDistance( &cache, &dinput, nullptr, 0 );
-			g_draw.DrawString( 5, m_textLine, "distance = %g", doutput.distance );
+			b2DistanceInput distanceInput;
+			distanceInput.proxyA = input.proxyA;
+			distanceInput.proxyB = input.proxyB;
+			distanceInput.transformA = b2GetSweepTransform( &sweepA, output.fraction );
+			distanceInput.transformB = b2GetSweepTransform( &sweepB, output.fraction );
+			distanceInput.useRadii = false;
+			b2SimplexCache cache = { 0 };
+			b2DistanceOutput distanceOutput = b2ShapeDistance( &cache, &distanceInput, nullptr, 0 );
+			g_draw.DrawString( 5, m_textLine, "distance = %g", distanceOutput.distance );
 			m_textLine += m_textIncrement;
 		}
 
@@ -3493,10 +3534,14 @@ public:
 #endif
 	}
 
-	b2Vec2 m_verticesA[4] = { { -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 5.0f }, { -1.0f, 5.0f } };
-	b2Vec2 m_verticesB[4] = { { -0.5f, -4.0f }, { 0.0f, -4.0f }, { 0.0f, 0.0f }, { -0.5f, 0.0f } };
+	b2Vec2 m_verticesA[4] = { { -16.25, 44.75 }, { -15.75, 44.75 }, { -15.75, 45.25 }, { -16.25, 45.25 } };
+	b2Vec2 m_verticesB[2] = { { 0.0f, -0.125000000f }, { 0.0f, 0.125000000f } };
+
 	int m_countA = ARRAY_COUNT( m_verticesA );
 	int m_countB = ARRAY_COUNT( m_verticesB );
+
+	float m_radiusA = 0.0f;
+	float m_radiusB = 0.0299999993f;
 };
 
 static int sampleTimeOfImpact = RegisterSample( "Collision", "Time of Impact", TimeOfImpact::Create );

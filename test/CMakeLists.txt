@@ -1,6 +1,6 @@
 # Box2D unit test app
 
-add_executable(test
+set(BOX2D_TEST_FILES
     main.c
     test_bitset.c
     test_collision.c
@@ -14,6 +14,8 @@ add_executable(test
     test_world.c
 )
 
+add_executable(test ${BOX2D_TEST_FILES})
+
 set_target_properties(test PROPERTIES
     C_STANDARD 17
     C_STANDARD_REQUIRED YES
@@ -23,10 +25,6 @@ set_target_properties(test PROPERTIES
 # Special access to Box2D internals for testing
 target_include_directories(test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
-if (MSVC)
-	target_compile_options(test PRIVATE /experimental:c11atomics)
-endif()
-
 target_link_libraries(test PRIVATE box2d enkiTS)
 
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${BOX2D_TESTS})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" PREFIX "" FILES ${BOX2D_TEST_FILES})

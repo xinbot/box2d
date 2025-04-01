@@ -66,8 +66,8 @@ public:
 
 		b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
 		jointDef.enableLimit = true;
-		jointDef.lowerAngle = -0.1f * b2_pi;
-		jointDef.upperAngle = 0.2f * b2_pi;
+		jointDef.lowerAngle = -0.1f * B2_PI;
+		jointDef.upperAngle = 0.2f * B2_PI;
 		jointDef.enableSpring = true;
 		jointDef.hertz = 0.5f;
 		jointDef.dampingRatio = 0.5f;
@@ -144,20 +144,12 @@ public:
 
 		if (m_hash == 0)
 		{
-			bool sleeping = true;
-			int bodyCount = e_rows * e_columns;
-			for (int i = 0; i < bodyCount; ++i)
-			{
-				if ( b2Body_IsAwake( m_bodies[i] ) == true )
-				{
-					sleeping = false;
-					break;
-				}
-			}
+			b2BodyEvents bodyEvents = b2World_GetBodyEvents( m_worldId );
 
-			if (sleeping == true)
+			if ( bodyEvents.moveCount == 0 )
 			{
 				uint32_t hash = B2_HASH_INIT;
+				int bodyCount = e_rows * e_columns;
 				for ( int i = 0; i < bodyCount; ++i )
 				{
 					b2Transform xf = b2Body_GetTransform( m_bodies[i] );

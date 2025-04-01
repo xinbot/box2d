@@ -94,7 +94,7 @@ Box2D also does not have exact collision. There is no continuous collision betwe
 Making a worms clone requires arbitrarily destructible terrain. This is beyond the scope of Box2D, so you will have to figure out how to do this on your own.
 
 ### Tile Based Environment
-Using many boxes for your terrain may not work well because box-like characters can get snagged on internal corners. Box2D proves chain shapes for smooth collision, see `b2ChainDef`. In general you should avoid using a rectangular character because collision tolerances will still lead to undesirable snagging. Box2D provides capsules and rounded polygons that may work better for characters.
+Using many boxes for your terrain may not work well because box-like characters can get snagged on internal corners. Box2D provides chain shapes for smooth collision, see `b2ChainDef`. In general you should avoid using a rectangular character because collision tolerances will still lead to undesirable snagging. Box2D provides capsules and rounded polygons that may work better for characters.
 
 ### Asteroid Type Coordinate Systems
 Box2D does not have any support for coordinate frame wrapping. You would likely need to customize Box2D for this purpose. You may need to use a different broad-phase for this to work.
@@ -107,6 +107,8 @@ For the same input, and same binary, Box2D will reproduce any simulation. Box2D 
 Box2D is also deterministic under multithreading. A simulation using two threads will give the same result as eight threads.
 
 However, people often want more stringent determinism. People often want to know if Box2D can produce identical results on different binaries and on different platforms. Currently this is not provided, but the situation may improve in a future update.
+
+todo update here on cross-platform determinism
 
 ### But I really want determinism
 This naturally leads to the question of fixed-point math. Box2D does not support fixed-point math. In the past Box2D was ported to the NDS in fixed-point and apparently it worked okay. Fixed-point math is slower and more tedious to develop, so I have chosen not to use fixed-point for the development of Box2D.

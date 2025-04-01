@@ -62,8 +62,6 @@ The Box2D library and samples build and run on Windows, Linux, and Mac.
 
 Box2D should be built on recent versions of clang and gcc. You will need the latest Visual Studio version for C11 atomics to compile (17.8.3+).
 
-AVX2 CPU support is assumed on x64. You can turn this off in the CMake options and use SSE2 instead. There are some compatibility issues with very old CPUs.
-
 ## Documentation
 - [Manual](https://box2d.org/documentation/)
 - [Migration Guide](https://github.com/erincatto/box2d/blob/main/docs/migration.md)
@@ -81,8 +79,11 @@ Please file an issue or start a chat on discord.
 Box2D is developed by Erin Catto and uses the [MIT license](https://en.wikipedia.org/wiki/MIT_License).
 
 ## Sponsorship
-Support development of Box2D through [Github Sponsors](https://github.com/sponsors/erincatto)
+Support development of Box2D through [Github Sponsors](https://github.com/sponsors/erincatto).
+
+Please consider starring this repository and subscribing to my [YouTube channel](https://www.youtube.com/@erin_catto).
 
 ## Ports, wrappers, and bindings
-- https://github.com/EnokViking/Box2DBeef
-- https://github.com/HolyBlackCat/box2cpp
+- Beef bindings - https://github.com/EnokViking/Box2DBeef
+- C++ bindings - https://github.com/HolyBlackCat/box2cpp
+- WASM - https://github.com/Birch-san/box2d3-wasm

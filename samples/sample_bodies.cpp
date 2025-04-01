@@ -69,7 +69,7 @@ public:
 			bodyDef.position = { -4.0f, 5.0f };
 			m_platformId = b2CreateBody( m_worldId, &bodyDef );
 
-			b2Polygon box = b2MakeOffsetBox( 0.5f, 4.0f, { 4.0f, 0.0f }, b2MakeRot( 0.5f * b2_pi ) );
+			b2Polygon box = b2MakeOffsetBox( 0.5f, 4.0f, { 4.0f, 0.0f }, b2MakeRot( 0.5f * B2_PI ) );
 
 			b2ShapeDef shapeDef = b2DefaultShapeDef();
 			shapeDef.friction = 0.6f;
@@ -333,7 +333,7 @@ public:
 		// Chain shape
 		{
 			b2BodyDef bodyDef = b2DefaultBodyDef();
-			bodyDef.rotation = b2MakeRot( 0.25f * b2_pi );
+			bodyDef.rotation = b2MakeRot( 0.25f * B2_PI );
 			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
 
 			b2Vec2 points[4] = { { 8.0f, 7.0f }, { 7.0f, 8.0f }, { 6.0f, 8.0f }, { 5.0f, 7.0f } };
@@ -468,6 +468,16 @@ public:
 
 static int sampleCharacter = RegisterSample( "Bodies", "Character", Character::Create );
 
+float FrictionCallback( float, int, float, int )
+{
+	return 0.1f;
+}
+
+float RestitutionCallback( float, int, float, int )
+{
+	return 1.0f;
+}
+
 class Weeble : public Sample
 {
 public:
@@ -479,6 +489,10 @@ public:
 			g_camera.m_center = { 2.3f, 10.0f };
 			g_camera.m_zoom = 25.0f * 0.5f;
 		}
+
+		// Test friction and restitution callbacks
+		b2World_SetFrictionCallback( m_worldId, FrictionCallback );
+		b2World_SetRestitutionCallback( m_worldId, RestitutionCallback );
 
 		b2BodyId groundId = b2_nullBodyId;
 		{
@@ -495,7 +509,7 @@ public:
 			b2BodyDef bodyDef = b2DefaultBodyDef();
 			bodyDef.type = b2_dynamicBody;
 			bodyDef.position = { 0.0f, 3.0f };
-			bodyDef.rotation = b2MakeRot( 0.25f * b2_pi );
+			bodyDef.rotation = b2MakeRot( 0.25f * B2_PI );
 			m_weebleId = b2CreateBody( m_worldId, &bodyDef );
 
 			b2Capsule capsule = { { 0.0f, -1.0f }, { 0.0f, 1.0f }, 1.0f };
@@ -528,7 +542,7 @@ public:
 		ImGui::Begin( "Weeble", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
 		if ( ImGui::Button( "Teleport" ) )
 		{
-			b2Body_SetTransform( m_weebleId, { 0.0f, 5.0f }, b2MakeRot( 0.95 * b2_pi ) );
+			b2Body_SetTransform( m_weebleId, { 0.0f, 5.0f }, b2MakeRot( 0.95 * B2_PI ) );
 		}
 
 		if ( ImGui::Button( "Explode" ) )
@@ -553,6 +567,17 @@ public:
 		Sample::Step( settings );
 
 		g_draw.DrawCircle( m_explosionPosition, m_explosionRadius, b2_colorAzure );
+
+		// This shows how to get the velocity of a point on a body
+		b2Vec2 localPoint = { 0.0f, 2.0f };
+		b2Vec2 worldPoint = b2Body_GetWorldPoint( m_weebleId, localPoint );
+
+		b2Vec2 v1 = b2Body_GetLocalPointVelocity( m_weebleId, localPoint );
+		b2Vec2 v2 = b2Body_GetWorldPointVelocity( m_weebleId, worldPoint );
+
+		b2Vec2 offset = { 0.05f, 0.0f };
+		g_draw.DrawSegment( worldPoint, worldPoint + v1, b2_colorRed );
+		g_draw.DrawSegment( worldPoint + offset, worldPoint + v2 + offset, b2_colorGreen );
 	}
 
 	static Sample* Create( Settings& settings )
@@ -633,7 +658,7 @@ public:
 			bodyDef.enableSleep = false;
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 
-			b2Polygon box = b2MakeOffsetBox( 1.0f, 1.0f, { 0.0f, 1.0f }, b2MakeRot( 0.25f * b2_pi ) );
+			b2Polygon box = b2MakeOffsetBox( 1.0f, 1.0f, { 0.0f, 1.0f }, b2MakeRot( 0.25f * B2_PI ) );
 			b2ShapeDef shapeDef = b2DefaultShapeDef();
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 		}
@@ -791,7 +816,7 @@ public:
 			bodyDef.type = b2_dynamicBody;
 			bodyDef.position = { 0.0f, 3.0f };
 			bodyDef.angularVelocity = 0.5f;
-			bodyDef.rotation = b2MakeRot( 0.25f * b2_pi );
+			bodyDef.rotation = b2MakeRot( 0.25f * B2_PI );
 
 			m_badBodyId = b2CreateBody( m_worldId, &bodyDef );
 
@@ -808,7 +833,7 @@ public:
 			b2BodyDef bodyDef = b2DefaultBodyDef();
 			bodyDef.type = b2_dynamicBody;
 			bodyDef.position = { 2.0f, 3.0f };
-			bodyDef.rotation = b2MakeRot( 0.25f * b2_pi );
+			bodyDef.rotation = b2MakeRot( 0.25f * B2_PI );
 
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 
@@ -842,3 +867,75 @@ public:
 };
 
 static int sampleBadBody = RegisterSample( "Bodies", "Bad", BadBody::Create );
+
+// This shows how to set the initial angular velocity to get a specific movement.
+class Pivot : public Sample
+{
+public:
+	explicit Pivot( Settings& settings )
+		: Sample( settings )
+	{
+		if ( settings.restart == false )
+		{
+			g_camera.m_center = { 0.8f, 6.4f };
+			g_camera.m_zoom = 25.0f * 0.4f;
+		}
+
+		b2BodyId groundId = b2_nullBodyId;
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			groundId = b2CreateBody( m_worldId, &bodyDef );
+
+			b2Segment segment = { { -20.0f, 0.0f }, { 20.0f, 0.0f } };
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			b2CreateSegmentShape( groundId, &shapeDef, &segment );
+		}
+
+		// Create a separate body on the ground
+		{
+			b2Vec2 v = { 5.0f, 0.0f };
+
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.type = b2_dynamicBody;
+			bodyDef.position = { 0.0f, 3.0f };
+			bodyDef.gravityScale = 1.0f;
+			bodyDef.linearVelocity = v;
+
+			m_bodyId = b2CreateBody( m_worldId, &bodyDef );
+
+			m_lever = 3.0f;
+			b2Vec2 r = { 0.0f, -m_lever };
+
+			float omega = b2Cross( v, r ) / b2Dot( r, r );
+			b2Body_SetAngularVelocity( m_bodyId, omega );
+
+			b2Polygon box = b2MakeBox( 0.1f, m_lever );
+
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			b2CreatePolygonShape( m_bodyId, &shapeDef, &box );
+		}
+	}
+
+	void Step( Settings& settings ) override
+	{
+		Sample::Step( settings );
+
+		b2Vec2 v = b2Body_GetLinearVelocity( m_bodyId );
+		float omega = b2Body_GetAngularVelocity( m_bodyId );
+		b2Vec2 r = b2Body_GetWorldVector( m_bodyId, { 0.0f, -m_lever } );
+
+		b2Vec2 vp = v + b2CrossSV( omega, r );
+		g_draw.DrawString( 5, m_textLine, "pivot velocity = (%g, %g)", vp.x, vp.y );
+		m_textLine += m_textIncrement;
+	}
+
+	static Sample* Create( Settings& settings )
+	{
+		return new Pivot( settings );
+	}
+
+	b2BodyId m_bodyId;
+	float m_lever;
+};
+
+static int samplePivot = RegisterSample( "Bodies", "Pivot", Pivot::Create );

@@ -317,7 +317,7 @@ public:
 		linearOffset.x = 6.0f * sinf( 2.0f * m_time );
 		linearOffset.y = 8.0f + 4.0f * sinf( 1.0f * m_time );
 
-		float angularOffset = b2_pi * sinf( -0.5f * m_time );
+		float angularOffset = B2_PI * sinf( -0.5f * m_time );
 
 		b2MotorJoint_SetLinearOffset( m_jointId, linearOffset );
 		b2MotorJoint_SetAngularOffset( m_jointId, angularOffset );
@@ -458,16 +458,16 @@ public:
 			jointDef.motorSpeed = m_motorSpeed;
 			jointDef.maxMotorTorque = m_motorTorque;
 			jointDef.enableMotor = m_enableMotor;
-			jointDef.referenceAngle = 0.5f * b2_pi;
-			jointDef.lowerAngle = -0.5f * b2_pi;
-			jointDef.upperAngle = 0.75f * b2_pi;
+			jointDef.referenceAngle = 0.5f * B2_PI;
+			jointDef.lowerAngle = -0.5f * B2_PI;
+			jointDef.upperAngle = 0.75f * B2_PI;
 			jointDef.enableLimit = m_enableLimit;
 
 			m_jointId1 = b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
 
 		{
-			b2Circle circle = { 0 };
+			b2Circle circle = { };
 			circle.radius = 2.0f;
 
 			b2BodyDef bodyDef = b2DefaultBodyDef();
@@ -498,8 +498,8 @@ public:
 			jointDef.bodyIdB = body;
 			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
 			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
-			jointDef.lowerAngle = -0.25f * b2_pi;
-			jointDef.upperAngle = 0.0f * b2_pi;
+			jointDef.lowerAngle = -0.25f * B2_PI;
+			jointDef.upperAngle = 0.0f * B2_PI;
 			jointDef.enableLimit = true;
 			jointDef.enableMotor = true;
 			jointDef.motorSpeed = 0.0f;
@@ -735,7 +735,7 @@ public:
 		m_textLine += m_textIncrement;
 
 		float speed = b2PrismaticJoint_GetSpeed( m_jointId );
-		g_draw.DrawString( 5, m_textLine, "Speed = %4.1f", speed );
+		g_draw.DrawString( 5, m_textLine, "Speed = %4.8f", speed );
 		m_textLine += m_textIncrement;
 	}
 
@@ -1830,7 +1830,7 @@ public:
 		static float hertz = 3.0f;
 		static float zeta = 0.7f;
 		static float maxForce = 1000.0f;
-		float omega = 2.0f * b2_pi * hertz;
+		float omega = 2.0f * B2_PI * hertz;
 		float sigma = 2.0f * zeta + timeStep * omega;
 		float s = timeStep * omega * sigma;
 		float impulseCoefficient = 1.0f / ( 1.0f + s );
@@ -1928,7 +1928,7 @@ public:
 			points[count--] = { 20.0f, 0.0f };
 
 			float hs[10] = { 0.25f, 1.0f, 4.0f, 0.0f, 0.0f, -1.0f, -2.0f, -2.0f, -1.25f, 0.0f };
-			float x = 20.0f, y1 = 0.0f, dx = 5.0f;
+			float x = 20.0f, dx = 5.0f;
 
 			for ( int j = 0; j < 2; ++j )
 			{
@@ -1936,7 +1936,6 @@ public:
 				{
 					float y2 = hs[i];
 					points[count--] = { x + dx, y2 };
-					y1 = y2;
 					x += dx;
 				}
 			}
@@ -1992,8 +1991,8 @@ public:
 			jointDef.bodyIdB = bodyId;
 			jointDef.localAnchorA = b2Body_GetLocalPoint( jointDef.bodyIdA, pivot );
 			jointDef.localAnchorB = b2Body_GetLocalPoint( jointDef.bodyIdB, pivot );
-			jointDef.lowerAngle = -8.0f * b2_pi / 180.0f;
-			jointDef.upperAngle = 8.0f * b2_pi / 180.0f;
+			jointDef.lowerAngle = -8.0f * B2_PI / 180.0f;
+			jointDef.upperAngle = 8.0f * B2_PI / 180.0f;
 			jointDef.enableLimit = true;
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
@@ -2073,11 +2072,11 @@ public:
 
 		m_throttle = 0.0f;
 		m_speed = 35.0f;
-		m_torque = 2.5f;
+		m_torque = 5.0f;
 		m_hertz = 5.0f;
 		m_dampingRatio = 0.7f;
 
-		m_car.Spawn( m_worldId, { 0.0f, 0.0f }, 1.0f, m_hertz, m_dampingRatio, m_torque, NULL );
+		m_car.Spawn( m_worldId, { 0.0f, 0.0f }, 1.0f, m_hertz, m_dampingRatio, m_torque, nullptr );
 	}
 
 	void UpdateUI() override
@@ -2104,7 +2103,7 @@ public:
 			m_car.SetSpeed( m_throttle * m_speed );
 		}
 
-		if ( ImGui::SliderFloat( "Torque", &m_torque, 0.0f, 5.0f, "%.1f" ) )
+		if ( ImGui::SliderFloat( "Torque", &m_torque, 0.0f, 10.0f, "%.1f" ) )
 		{
 			m_car.SetTorque( m_torque );
 		}
@@ -2190,14 +2189,16 @@ public:
 		m_jointHertz = 5.0f;
 		m_jointDampingRatio = 0.5f;
 
+		m_human = {};
+
 		Spawn();
 	}
 
 	void Spawn()
 	{
-		m_human.Spawn( m_worldId, { 0.0f, 25.0f }, 1.0f, m_jointFrictionTorque, m_jointHertz, m_jointDampingRatio, 1, nullptr,
-					   false );
-		m_human.ApplyRandomAngularImpulse( 10.0f );
+		CreateHuman( &m_human, m_worldId, { 0.0f, 25.0f }, 1.0f, m_jointFrictionTorque, m_jointHertz, m_jointDampingRatio, 1,
+					 nullptr, false );
+		Human_ApplyRandomAngularImpulse( &m_human, 10.0f );
 	}
 
 	void UpdateUI() override
@@ -2211,22 +2212,22 @@ public:
 
 		if ( ImGui::SliderFloat( "Friction", &m_jointFrictionTorque, 0.0f, 1.0f, "%3.2f" ) )
 		{
-			m_human.SetJointFrictionTorque( m_jointFrictionTorque );
+			Human_SetJointFrictionTorque( &m_human, m_jointFrictionTorque );
 		}
 
 		if ( ImGui::SliderFloat( "Hertz", &m_jointHertz, 0.0f, 10.0f, "%3.1f" ) )
 		{
-			m_human.SetJointSpringHertz( m_jointHertz );
+			Human_SetJointSpringHertz( &m_human, m_jointHertz );
 		}
 
 		if ( ImGui::SliderFloat( "Damping", &m_jointDampingRatio, 0.0f, 4.0f, "%3.1f" ) )
 		{
-			m_human.SetJointDampingRatio( m_jointDampingRatio );
+			Human_SetJointDampingRatio( &m_human, m_jointDampingRatio );
 		}
 
 		if ( ImGui::Button( "Respawn" ) )
 		{
-			m_human.Despawn();
+			DestroyHuman( &m_human );
 			Spawn();
 		}
 		ImGui::PopItemWidth();
@@ -2266,127 +2267,7 @@ public:
 			b2CreateSegmentShape( groundId, &shapeDef, &segment );
 		}
 
-		m_beginFlag = false;
-		m_beginTransform = b2Transform_identity;
-		m_endFlag = false;
-		m_endTransform = b2Transform_identity;
-
-		{
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			bodyDef.type = b2_staticBody;
-
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-			shapeDef.density = 1.0f;
-			shapeDef.friction = 0.3f;
-			shapeDef.isSensor = true;
-
-			bodyDef.position = { -6.5f, 8.0f };
-			m_sensor = b2CreateBody( m_worldId, &bodyDef );
-			b2Polygon r1 = b2MakeBox( 3.0f, 0.5f );
-			b2CreatePolygonShape( m_sensor, &shapeDef, &r1 );
-		}
-
-		m_ball = b2_nullBodyId;
-	}
-
-	void CreateTestBall( b2Vec2 impulse )
-	{
-		if ( b2Body_IsValid( m_ball ) )
-		{
-			b2DestroyBody( m_ball );
-		}
-
-		b2BodyDef bodyDef = b2DefaultBodyDef();
-		bodyDef.type = b2_dynamicBody;
-		bodyDef.position = { -6.5f, 4.0f };
-
-		b2ShapeDef shapeDef = b2DefaultShapeDef();
-		shapeDef.density = 1.0f;
-		shapeDef.friction = 0.3f;
-		shapeDef.userData = (void*)"ball";
-
-		m_ball = b2CreateBody( m_worldId, &bodyDef );
-		b2Circle c1 = { b2Vec2_zero, 0.25f };
-		b2CreateCircleShape( m_ball, &shapeDef, &c1 );
-		b2Body_ApplyLinearImpulse( m_ball, impulse, bodyDef.position, true );
-	}
-
-	void Step( Settings& settings ) override
-	{
-		Sample::Step( settings );
-
-		b2SensorEvents sensorEvents = b2World_GetSensorEvents( m_worldId );
-		for ( int i = 0; i < sensorEvents.beginCount; ++i )
-		{
-			b2SensorBeginTouchEvent event = sensorEvents.beginEvents[i];
-			void* userData = b2Shape_GetUserData( event.visitorShapeId );
-			if ( strcmp( (char*)userData, "ball" ) == 0 )
-			{
-				m_beginFlag = true;
-				m_endFlag = false;
-				if ( b2Body_GetLinearVelocity( m_ball ).y < 0 )
-				{
-					m_beginTransform.p = b2Add( b2Body_GetPosition( m_sensor ), { 0.0f, 0.5f } );
-				}
-				else
-				{
-					m_beginTransform.p = b2Sub( b2Body_GetPosition( m_sensor ), { 0.0f, 0.5f } );
-				}
-			}
-		}
-
-		for ( int i = 0; i < sensorEvents.endCount; ++i )
-		{
-			b2SensorEndTouchEvent event = sensorEvents.endEvents[i];
-			void* userData = b2Shape_GetUserData( event.visitorShapeId );
-			if ( strcmp( (char*)userData, "ball" ) == 0 )
-			{
-				m_endFlag = true;
-				if ( b2Body_GetLinearVelocity( m_ball ).y < 0 )
-				{
-					m_endTransform.p = b2Sub( b2Body_GetPosition( m_sensor ), { 0.0f, 0.5f } );
-				}
-				else
-				{
-					m_endTransform.p = b2Add( b2Body_GetPosition( m_sensor ), { 0.0f, 0.5f } );
-				}
-			}
-		}
-
-		if ( m_beginFlag )
-		{
-			g_draw.DrawSolidCircle( m_beginTransform, b2Vec2_zero, 0.5f, b2_colorGreen );
-		}
-
-		if ( m_endFlag )
-		{
-			g_draw.DrawSolidCircle( m_endTransform, b2Vec2_zero, 0.5f, b2_colorRed );
-		}
-	}
-
-	void UpdateUI() override
-	{
-		float height = 120.0f;
-		ImGui::SetNextWindowPos( ImVec2( 10.0f, g_camera.m_height - height - 50.0f ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 120.0f, height ) );
-
-		ImGui::Begin( "Spawn test ball", nullptr, ImGuiWindowFlags_NoResize );
-
-		if ( ImGui::Button( "Slow ball" ) )
-		{
-			m_beginFlag = false;
-			m_endFlag = false;
-			CreateTestBall( { 0.0f, 2.0f } );
-		}
-
-		if ( ImGui::Button( "Fast ball" ) )
-		{
-			m_beginFlag = false;
-			m_endFlag = false;
-			CreateTestBall( { 0.0f, 8.0f } );
-		}
-
-		ImGui::End();
+		m_donut.Spawn( m_worldId, { 0.0f, 10.0f }, 2.0f, 0, nullptr );
 	}
 
 	static Sample* Create( Settings& settings )
@@ -2394,13 +2275,7 @@ public:
 		return new SoftBody( settings );
 	}
 
-	b2BodyId m_ball;
-	b2BodyId m_sensor;
-
-	bool m_beginFlag;
-	b2Transform m_beginTransform;
-	bool m_endFlag;
-	b2Transform m_endTransform;
+	Donut m_donut;
 };
 
 static int sampleDonut = RegisterSample( "Joints", "Soft Body", SoftBody::Create );
@@ -2616,7 +2491,7 @@ public:
 		m_liftJointId = b2CreateDistanceJoint( m_worldId, &distanceDef );
 
 		Car car;
-		car.Spawn( m_worldId, { 0.0f, y + 2.0f }, 1.0f, 3.0f, 0.7f, 0.0f, NULL );
+		car.Spawn( m_worldId, { 0.0f, y + 2.0f }, 1.0f, 3.0f, 0.7f, 0.0f, nullptr );
 	}
 
 	void UpdateUI() override

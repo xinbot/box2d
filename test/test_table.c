@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Erin Catto
 // SPDX-License-Identifier: MIT
 
+#include "atomic.h"
+#include "core.h"
 #include "ctz.h"
 #include "table.h"
 #include "test_macros.h"
 
 #include "box2d/base.h"
-
-#include <stdatomic.h>
 
 #define SET_SPAN 317
 #define ITEM_COUNT ( ( SET_SPAN * SET_SPAN - SET_SPAN ) / 2 )
@@ -63,14 +63,14 @@ int TableTest( void )
 
 		ENSURE( set.count == ( itemCount - removeCount ) );
 
-#ifndef NDEBUG
-		extern _Atomic int g_probeCount;
-		g_probeCount = 0;
+#if B2_SNOOP_TABLE_COUNTERS
+		extern b2AtomicInt b2_probeCount;
+		b2AtomicStoreInt( &b2_probeCount, 0 );
 #endif
 
 		// Test key search
 		// ~5ns per search on an AMD 7950x
-		b2Timer timer = b2CreateTimer();
+		uint64_t ticks = b2GetTicks();
 
 		k = 0;
 		for ( int32_t i = 0; i < N; ++i )
@@ -86,12 +86,13 @@ int TableTest( void )
 		// uint64_t ticks = b2GetTicks(&timer);
 		// printf("set ticks = %llu\n", ticks);
 
-		float ms = b2GetMilliseconds( &timer );
+		float ms = b2GetMilliseconds( ticks );
 		printf( "set: count = %d, b2ContainsKey = %.5f ms, ave = %.5f us\n", itemCount, ms, 1000.0f * ms / itemCount );
 
-#if !NDEBUG
-		float aveProbeCount = (float)g_probeCount / (float)itemCount;
-		printf( "item count = %d, probe count = %d, ave probe count %.2f\n", itemCount, g_probeCount, aveProbeCount );
+#if B2_SNOOP_TABLE_COUNTERS
+		int probeCount = b2AtomicLoadInt( &b2_probeCount );
+		float aveProbeCount = (float)probeCount / (float)itemCount;
+		printf( "item count = %d, probe count = %d, ave probe count %.2f\n", itemCount, probeCount, aveProbeCount );
 #endif
 
 		// Remove all keys from set

@@ -877,18 +877,50 @@ is a shape that detects overlap but does not produce a response.
 
 You can flag any shape as being a sensor. Sensors may be static,
 kinematic, or dynamic. Remember that you may have multiple shapes per
-body and you can have any mix of sensors and solid shapes. Also,
-sensors only form contacts when at least one body is dynamic, so you
-will not get sensors overlap detection for kinematic versus kinematic,
-kinematic versus static, or static versus static. Finally sensors do not
+body and you can have any mix of sensors and solid shapes. Sensors do not
 detect other sensors.
+
+Sensors are processed at the end of the world step and generate begin and end
+events without delay. User operations may cause overlaps to begin or end. These
+are processed the next time step. Such operations include:
+- destroying a body or shape
+- changing a shape filter
+- disabling or enabling a body
+- setting a body transform
 
 Sensors do not detect objects that pass through the sensor shape within 
 one time step. If you have fast moving object and/or small sensors then you
 should use a ray or shape cast to detect these events.
 
-Sensor overlap detection is achieved using events, which are described
-below.
+You can access the current sensor overlaps. Be careful because some shape ids may
+be invalid due to a shape being destroyed. Use `b2Shape_IsValid` to ensure an
+overlapping shape is still valid.
+
+```cpp
+// First determine the required array capacity to hold all the overlapping shape ids.
+int capacity = b2Shape_GetSensorCapacity( sensorShapeId );
+std::vector<b2ShapeId> overlaps;
+overlaps.resize( capacity );
+
+// Now get all overlaps and record the actual count
+int count = b2Shape_GetSensorOverlaps( sensorShapeId, overlaps.data(), capacity );
+overlaps.resize( count );
+
+for ( int i = 0; i < count; ++i )
+{
+    b2ShapeId visitorId = overlaps[i];
+
+    // Ensure the visitorId is valid
+    if ( b2Shape_IsValid( visitorId ) == false )
+    {
+        continue;
+    }
+
+    // process overlap using game logic
+}
+```
+
+Sensor overlap can also be achieved using events, which are described below.
 
 ## Contacts
 Contacts are internal objects created by Box2D to manage collision between pairs of
@@ -1009,23 +1041,24 @@ for (int i = 0; i < sensorEvents.beginCount; ++i)
 }
 ```
 
-And there are events when a shape stops overlapping with a sensor.
+And there are events when a shape stops overlapping with a sensor. Be careful with end
+touch events because they may be generated when shapes are destroyed. Test the shape
+ids with `b2Shape_IsValid`.
 
 ```c
 for (int i = 0; i < sensorEvents.endCount; ++i)
 {
     b2SensorEndTouchEvent* endTouch = sensorEvents.endEvents + i;
-    void* myUserData = b2Shape_GetUserData(endTouch->visitorShapeId);
-    // process end event
+    if (b2Shape_IsValid(endTouch->visitorShapeId))
+    {
+        void* myUserData = b2Shape_GetUserData(endTouch->visitorShapeId);
+        // process end event
+    }
 }
 ```
 
-You will not get end events if a shape is destroyed. Sensor events should
-be processed after the world step and before other game logic. This should
+Sensor events should be processed after the world step and before other game logic. This should
 help you avoid processing stale data.
-
-Sensor events are only enabled for a non-sensor shape if `b2ShapeDef::enableSensorEvents`
-is true.
 
 ### Contact Events
 Contact events are available after each world step. Like sensor events these should be
@@ -1065,11 +1098,17 @@ contain the two shape ids.
 for (int i = 0; i < contactEvents.endCount; ++i)
 {
     b2ContactEndTouchEvent* endEvent = contactEvents.endEvents + i;
-    ShapesStopTouching(endEvent->shapeIdA, endEvent->shapeIdB);
+
+    // Use b2Shape_IsValid because a shape may have been destroyed
+    if (b2Shape_IsValid(endEvent->shapeIdA) && b2Shape_IsValid(endEvent->shapeIdB))
+    {
+        ShapesStopTouching(endEvent->shapeIdA, endEvent->shapeIdB);
+    }
 }
 ```
 
-The end touch events are not generated when you destroy a shape or the body that owns it.
+Similar to `b2SensorEndTouchEvent`, `b2ContactEndTouchEvent` may be generated due to a user operation,
+such as destroying a body or shape. These events are included with simulation events after the next `b2World_Step`.
 
 Shapes only generate begin and end touch events if `b2ShapeDef::enableContactEvents` is true.
 
