@@ -3,7 +3,7 @@ include(FetchContent)
 include(CMakeDependentOption)
 
 project(box2d
-	VERSION 3.1.0
+	VERSION 3.2.0
 	DESCRIPTION "A 2D physics engine for games"
 	HOMEPAGE_URL "https://box2d.org"
 	LANGUAGES C CXX
@@ -18,8 +18,8 @@ message(STATUS "CMake C++ compiler: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMake system name: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "CMake host system processor: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
 
-# static link
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# static link to make leak checking easier (_crtBreakAlloc)
+# set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 if (MSVC OR APPLE)
 	option(BOX2D_SANITIZE "Enable sanitizers for some builds" OFF)
@@ -35,7 +35,7 @@ if (MSVC OR APPLE)
 			add_link_options(-fsanitize=address -fsanitize-address-use-after-scope -fsanitize=undefined)
 		endif()
 	else()
-		if(MSVC)
+		if(MSVC AND PROJECT_IS_TOP_LEVEL)
 			# enable hot reloading
 			add_compile_options("$<$<CONFIG:Debug>:/ZI>")
 			add_link_options("$<$<CONFIG:Debug>:/INCREMENTAL>")
@@ -50,6 +50,7 @@ if (MINGW OR APPLE OR UNIX)
 endif()
 
 option(BOX2D_DISABLE_SIMD "Disable SIMD math (slower)" OFF)
+option(BOX2D_COMPILE_WARNING_AS_ERROR "Compile warnings as errors" OFF)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
 	cmake_dependent_option(BOX2D_AVX2 "Enable AVX2" OFF "NOT BOX2D_DISABLE_SIMD" OFF)
@@ -73,19 +74,8 @@ if(PROJECT_IS_TOP_LEVEL)
 	option(BOX2D_PROFILE "Enable profiling with Tracy" OFF)
 	option(BOX2D_VALIDATE "Enable heavy validation" ON)
 	option(BOX2D_UNIT_TESTS "Build the Box2D unit tests" ON)
-	option(BOX2D_COMPILE_WARNING_AS_ERROR "Compile warnings as errors" OFF)
 	
-	if(MSVC AND WIN32)
-		# add_compile_options(/fsanitize=address)
-		# set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/GS- /Gy /O2 /Oi /Ot")
-		# set(CMAKE_CXX_FLAGS_RELEASE "/GS- /Gy /O2 /Oi /Ot")
-		# set(CMAKE_C_FLAGS_RELWITHDEBINFO "/GS- /Gy /O2 /Oi /Ot")
-		# set(CMAKE_C_FLAGS_RELEASE "/GS- /Gy /O2 /Oi /Ot")
-	endif()
-
-	# enkiTS is used by all the test apps, but not directly by the Box2D library
 	if(BOX2D_UNIT_TESTS OR BOX2D_SAMPLES OR BOX2D_BENCHMARKS)
-
 		# Emscripten pthread support for enkiTS
 		if(EMSCRIPTEN)
 			set(EMSCRIPTEN_PTHREADS_COMPILER_FLAGS "-pthread -s USE_PTHREADS=1")

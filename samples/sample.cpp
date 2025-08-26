@@ -11,7 +11,9 @@
 #include "draw.h"
 #include "imgui.h"
 #include "random.h"
-#include "settings.h"
+
+// consider using https://github.com/skeeto/pdjson
+#include "jsmn.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -19,6 +21,120 @@
 #include <GLFW/glfw3.h>
 #include <ctype.h>
 #include <stdio.h>
+
+static const char* fileName = "settings.ini";
+
+// Load a file. You must free the character array.
+static bool ReadFile( char*& data, int& size, const char* filename )
+{
+	FILE* file = fopen( filename, "rb" );
+	if ( file == nullptr )
+	{
+		return false;
+	}
+
+	fseek( file, 0, SEEK_END );
+	size = (int)ftell( file );
+	fseek( file, 0, SEEK_SET );
+
+	if ( size == 0 )
+	{
+		return false;
+	}
+
+	data = (char*)malloc( size + 1 );
+	size_t count = fread( data, size, 1, file );
+	(void)count;
+	fclose( file );
+	data[size] = 0;
+
+	return true;
+}
+
+void SampleContext::Save()
+{
+	FILE* file = fopen( fileName, "w" );
+	fprintf( file, "{\n" );
+	fprintf( file, "  \"sampleIndex\": %d,\n", sampleIndex );
+	fprintf( file, "  \"drawShapes\": %s,\n", drawShapes ? "true" : "false" );
+	fprintf( file, "  \"drawJoints\": %s,\n", drawJoints ? "true" : "false" );
+	fprintf( file, "}\n" );
+	fclose( file );
+}
+
+static int jsoneq( const char* json, jsmntok_t* tok, const char* s )
+{
+	if ( tok->type == JSMN_STRING && (int)strlen( s ) == tok->end - tok->start &&
+		 strncmp( json + tok->start, s, tok->end - tok->start ) == 0 )
+	{
+		return 0;
+	}
+	return -1;
+}
+
+#define MAX_TOKENS 32
+
+void SampleContext::Load()
+{
+	char* data = nullptr;
+	int size = 0;
+	bool found = ReadFile( data, size, fileName );
+	if ( found == false )
+	{
+		return;
+	}
+
+	jsmn_parser parser;
+	jsmntok_t tokens[MAX_TOKENS];
+
+	jsmn_init( &parser );
+
+	// js - pointer to JSON string
+	// tokens - an array of tokens available
+	// 10 - number of tokens available
+	int tokenCount = jsmn_parse( &parser, data, size, tokens, MAX_TOKENS );
+	char buffer[32];
+
+	for ( int i = 0; i < tokenCount; ++i )
+	{
+		if ( jsoneq( data, &tokens[i], "sampleIndex" ) == 0 )
+		{
+			int count = tokens[i + 1].end - tokens[i + 1].start;
+			assert( count < 32 );
+			const char* s = data + tokens[i + 1].start;
+			strncpy( buffer, s, count );
+			buffer[count] = 0;
+			char* dummy;
+			sampleIndex = (int)strtol( buffer, &dummy, 10 );
+		}
+		else if ( jsoneq( data, &tokens[i], "drawShapes" ) == 0 )
+		{
+			const char* s = data + tokens[i + 1].start;
+			if ( strncmp( s, "true", 4 ) == 0 )
+			{
+				drawShapes = true;
+			}
+			else if ( strncmp( s, "false", 5 ) == 0 )
+			{
+				drawShapes = false;
+			}
+		}
+		else if ( jsoneq( data, &tokens[i], "drawJoints" ) == 0 )
+		{
+			const char* s = data + tokens[i + 1].start;
+			if ( strncmp( s, "true", 4 ) == 0 )
+			{
+				drawJoints = true;
+			}
+			else if ( strncmp( s, "false", 5 ) == 0 )
+			{
+				drawJoints = false;
+			}
+		}
+	}
+
+	free( data );
+}
 
 class SampleTask : public enki::ITaskSet
 {
@@ -95,15 +211,19 @@ static void TestMathCpp()
 	c += c;
 }
 
-Sample::Sample( Settings& settings )
+Sample::Sample( SampleContext* context )
 {
+	m_context = context;
+	m_camera = &context->camera;
+	m_draw = &context->draw;
+
 	m_scheduler = new enki::TaskScheduler;
-	m_scheduler->Initialize( settings.workerCount );
+	m_scheduler->Initialize( m_context->workerCount );
 
 	m_tasks = new SampleTask[m_maxTasks];
 	m_taskCount = 0;
 
-	m_threadCount = 1 + settings.workerCount;
+	m_threadCount = 1 + m_context->workerCount;
 
 	m_worldId = b2_nullWorldId;
 
@@ -113,14 +233,13 @@ Sample::Sample( Settings& settings )
 
 	m_stepCount = 0;
 
-	m_groundBodyId = b2_nullBodyId;
+	m_mouseBodyId = b2_nullBodyId;
+	m_mousePoint = {};
 
 	m_maxProfile = {};
 	m_totalProfile = {};
 
-	g_seed = RAND_SEED;
-
-	m_settings = &settings;
+	g_randomSeed = RAND_SEED;
 
 	CreateWorld();
 	TestMathCpp();
@@ -144,17 +263,17 @@ void Sample::CreateWorld()
 	}
 
 	b2WorldDef worldDef = b2DefaultWorldDef();
-	worldDef.workerCount = m_settings->workerCount;
+	worldDef.workerCount = m_context->workerCount;
 	worldDef.enqueueTask = EnqueueTask;
 	worldDef.finishTask = FinishTask;
 	worldDef.userTaskContext = this;
-	worldDef.enableSleep = m_settings->enableSleep;
+	worldDef.enableSleep = m_context->enableSleep;
 	m_worldId = b2CreateWorld( &worldDef );
 }
 
 void Sample::DrawTitle( const char* string )
 {
-	g_draw.DrawString( 5, 5, string );
+	m_context->draw.DrawString( 5, 5, string );
 	m_textLine = int( 26.0f );
 }
 
@@ -202,6 +321,8 @@ void Sample::MouseDown( b2Vec2 p, int button, int mod )
 		box.lowerBound = b2Sub( p, d );
 		box.upperBound = b2Add( p, d );
 
+		m_mousePoint = p;
+
 		// Query the world for overlapping shapes.
 		QueryContext queryContext = { p, b2_nullBodyId };
 		b2World_OverlapAABB( m_worldId, box, b2DefaultQueryFilter(), QueryCallback, &queryContext );
@@ -209,37 +330,44 @@ void Sample::MouseDown( b2Vec2 p, int button, int mod )
 		if ( B2_IS_NON_NULL( queryContext.bodyId ) )
 		{
 			b2BodyDef bodyDef = b2DefaultBodyDef();
-			m_groundBodyId = b2CreateBody( m_worldId, &bodyDef );
+			bodyDef.type = b2_kinematicBody;
+			bodyDef.position = m_mousePoint;
+			bodyDef.enableSleep = false;
+			m_mouseBodyId = b2CreateBody( m_worldId, &bodyDef );
 
-			b2MouseJointDef mouseDef = b2DefaultMouseJointDef();
-			mouseDef.bodyIdA = m_groundBodyId;
-			mouseDef.bodyIdB = queryContext.bodyId;
-			mouseDef.target = p;
-			mouseDef.hertz = 5.0f;
-			mouseDef.dampingRatio = 0.7f;
-			mouseDef.maxForce = 1000.0f * b2Body_GetMass( queryContext.bodyId );
-			m_mouseJointId = b2CreateMouseJoint( m_worldId, &mouseDef );
+			b2MotorJointDef jointDef = b2DefaultMotorJointDef();
+			jointDef.base.bodyIdA = m_mouseBodyId;
+			jointDef.base.bodyIdB = queryContext.bodyId;
+			jointDef.base.localFrameB.p = b2Body_GetLocalPoint( queryContext.bodyId, p );
+			jointDef.linearHertz = 7.5f;
+			jointDef.linearDampingRatio = 1.0f;
 
-			b2Body_SetAwake( queryContext.bodyId, true );
+			b2MassData massData = b2Body_GetMassData( queryContext.bodyId );
+			float g = b2Length( b2World_GetGravity( m_worldId ) );
+			float mg = massData.mass * g;
+			jointDef.maxSpringForce = 100.0f * mg;
+
+			if (massData.mass > 0.0f)
+			{
+				// This acts like angular friction
+				float lever = sqrtf( massData.rotationalInertia / massData.mass );
+				jointDef.maxVelocityTorque = 1.0f * lever * mg;
+			}
+
+			m_mouseJointId = b2CreateMotorJoint( m_worldId, &jointDef );
 		}
 	}
 }
 
 void Sample::MouseUp( b2Vec2 p, int button )
 {
-	if ( b2Joint_IsValid( m_mouseJointId ) == false )
-	{
-		// The world or attached body was destroyed.
-		m_mouseJointId = b2_nullJointId;
-	}
-
 	if ( B2_IS_NON_NULL( m_mouseJointId ) && button == GLFW_MOUSE_BUTTON_1 )
 	{
 		b2DestroyJoint( m_mouseJointId );
 		m_mouseJointId = b2_nullJointId;
 
-		b2DestroyBody( m_groundBodyId );
-		m_groundBodyId = b2_nullBodyId;
+		b2DestroyBody( m_mouseBodyId );
+		m_mouseBodyId = b2_nullBodyId;
 	}
 }
 
@@ -251,12 +379,7 @@ void Sample::MouseMove( b2Vec2 p )
 		m_mouseJointId = b2_nullJointId;
 	}
 
-	if ( B2_IS_NON_NULL( m_mouseJointId ) )
-	{
-		b2MouseJoint_SetTarget( m_mouseJointId, p );
-		b2BodyId bodyIdB = b2Joint_GetBodyB( m_mouseJointId );
-		b2Body_SetAwake( bodyIdB, true );
-	}
+	m_mousePoint = p;
 }
 
 void Sample::DrawTextLine( const char* text, ... )
@@ -266,7 +389,7 @@ void Sample::DrawTextLine( const char* text, ... )
 	ImGui::Begin( "Overlay", nullptr,
 				  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
 					  ImGuiWindowFlags_NoScrollbar );
-	ImGui::PushFont( g_draw.m_regularFont );
+	ImGui::PushFont( m_context->draw.m_regularFont );
 	ImGui::SetCursorPos( ImVec2( 5.0f, float( m_textLine ) ) );
 	ImGui::TextColoredV( ImColor( 230, 153, 153, 255 ), text, arg );
 	ImGui::PopFont();
@@ -283,69 +406,78 @@ void Sample::ResetProfile()
 	m_stepCount = 0;
 }
 
-void Sample::Step( Settings& settings )
+void Sample::Step()
 {
-	float timeStep = settings.hertz > 0.0f ? 1.0f / settings.hertz : 0.0f;
+	float timeStep = m_context->hertz > 0.0f ? 1.0f / m_context->hertz : 0.0f;
 
-	if ( settings.pause )
+	if ( m_context->pause )
 	{
-		if ( settings.singleStep )
+		if ( m_context->singleStep )
 		{
-			settings.singleStep = false;
+			m_context->singleStep = false;
 		}
 		else
 		{
 			timeStep = 0.0f;
 		}
 
-		if ( g_draw.m_showUI )
+		if ( m_context->draw.m_showUI )
 		{
-			g_draw.DrawString( 5, m_textLine, "****PAUSED****" );
+			DrawTextLine( "****PAUSED****" );
 			m_textLine += m_textIncrement;
 		}
 	}
 
-	g_draw.m_debugDraw.drawingBounds = g_camera.GetViewBounds();
-	g_draw.m_debugDraw.useDrawingBounds = settings.useCameraBounds;
+	if ( B2_IS_NON_NULL( m_mouseJointId ) && b2Joint_IsValid( m_mouseJointId ) == false )
+	{
+		// The world or attached body was destroyed.
+		m_mouseJointId = b2_nullJointId;
 
-	// todo testing
-	// b2Transform t1 = {g_draw.m_debugDraw.drawingBounds.lowerBound, b2Rot_identity};
-	// b2Transform t2 = {g_draw.m_debugDraw.drawingBounds.upperBound, b2Rot_identity};
-	// g_draw.DrawSolidCircle(t1, b2Vec2_zero, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f});
-	// g_draw.DrawSolidCircle(t2, b2Vec2_zero, 1.0f, {1.0f, 0.0f, 0.0f, 1.0f});
+		if (B2_IS_NON_NULL(m_mouseBodyId))
+		{
+			b2DestroyBody( m_mouseBodyId );
+			m_mouseBodyId = b2_nullBodyId;
+		}
+	}
 
-	g_draw.m_debugDraw.drawShapes = settings.drawShapes;
-	g_draw.m_debugDraw.drawJoints = settings.drawJoints;
-	g_draw.m_debugDraw.drawJointExtras = settings.drawJointExtras;
-	g_draw.m_debugDraw.drawBounds = settings.drawBounds;
-	g_draw.m_debugDraw.drawMass = settings.drawMass;
-	g_draw.m_debugDraw.drawBodyNames = settings.drawBodyNames;
-	g_draw.m_debugDraw.drawContacts = settings.drawContactPoints;
-	g_draw.m_debugDraw.drawGraphColors = settings.drawGraphColors;
-	g_draw.m_debugDraw.drawContactNormals = settings.drawContactNormals;
-	g_draw.m_debugDraw.drawContactImpulses = settings.drawContactImpulses;
-	g_draw.m_debugDraw.drawContactFeatures = settings.drawContactFeatures;
-	g_draw.m_debugDraw.drawFrictionImpulses = settings.drawFrictionImpulses;
-	g_draw.m_debugDraw.drawIslands = settings.drawIslands;
+	if (B2_IS_NON_NULL(m_mouseBodyId) && timeStep > 0.0f)
+	{
+		b2Body_SetTargetTransform( m_mouseBodyId, { m_mousePoint, b2Rot_identity }, timeStep );
+	}
 
-	b2World_EnableSleeping( m_worldId, settings.enableSleep );
-	b2World_EnableWarmStarting( m_worldId, settings.enableWarmStarting );
-	b2World_EnableContinuous( m_worldId, settings.enableContinuous );
+	m_context->draw.m_debugDraw.drawingBounds = m_context->camera.GetViewBounds();
+	m_context->draw.m_debugDraw.drawShapes = m_context->drawShapes;
+	m_context->draw.m_debugDraw.drawJoints = m_context->drawJoints;
+	m_context->draw.m_debugDraw.drawJointExtras = m_context->drawJointExtras;
+	m_context->draw.m_debugDraw.drawBounds = m_context->drawBounds;
+	m_context->draw.m_debugDraw.drawMass = m_context->drawMass;
+	m_context->draw.m_debugDraw.drawBodyNames = m_context->drawBodyNames;
+	m_context->draw.m_debugDraw.drawContacts = m_context->drawContactPoints;
+	m_context->draw.m_debugDraw.drawGraphColors = m_context->drawGraphColors;
+	m_context->draw.m_debugDraw.drawContactNormals = m_context->drawContactNormals;
+	m_context->draw.m_debugDraw.drawContactImpulses = m_context->drawContactImpulses;
+	m_context->draw.m_debugDraw.drawContactFeatures = m_context->drawContactFeatures;
+	m_context->draw.m_debugDraw.drawFrictionImpulses = m_context->drawFrictionImpulses;
+	m_context->draw.m_debugDraw.drawIslands = m_context->drawIslands;
+
+	b2World_EnableSleeping( m_worldId, m_context->enableSleep );
+	b2World_EnableWarmStarting( m_worldId, m_context->enableWarmStarting );
+	b2World_EnableContinuous( m_worldId, m_context->enableContinuous );
 
 	for ( int i = 0; i < 1; ++i )
 	{
-		b2World_Step( m_worldId, timeStep, settings.subStepCount );
+		b2World_Step( m_worldId, timeStep, m_context->subStepCount );
 		m_taskCount = 0;
 	}
 
-	b2World_Draw( m_worldId, &g_draw.m_debugDraw );
+	b2World_Draw( m_worldId, &m_context->draw.m_debugDraw );
 
 	if ( timeStep > 0.0f )
 	{
 		++m_stepCount;
 	}
 
-	if ( settings.drawCounters )
+	if ( m_context->drawCounters )
 	{
 		b2Counters s = b2World_GetCounters( m_worldId );
 
@@ -377,7 +509,6 @@ void Sample::Step( Settings& settings )
 		m_maxProfile.pairs = b2MaxFloat( m_maxProfile.pairs, p.pairs );
 		m_maxProfile.collide = b2MaxFloat( m_maxProfile.collide, p.collide );
 		m_maxProfile.solve = b2MaxFloat( m_maxProfile.solve, p.solve );
-		m_maxProfile.mergeIslands = b2MaxFloat( m_maxProfile.mergeIslands, p.mergeIslands );
 		m_maxProfile.prepareStages = b2MaxFloat( m_maxProfile.prepareStages, p.prepareStages );
 		m_maxProfile.solveConstraints = b2MaxFloat( m_maxProfile.solveConstraints, p.solveConstraints );
 		m_maxProfile.prepareConstraints = b2MaxFloat( m_maxProfile.prepareConstraints, p.prepareConstraints );
@@ -390,6 +521,7 @@ void Sample::Step( Settings& settings )
 		m_maxProfile.storeImpulses = b2MaxFloat( m_maxProfile.storeImpulses, p.storeImpulses );
 		m_maxProfile.transforms = b2MaxFloat( m_maxProfile.transforms, p.transforms );
 		m_maxProfile.splitIslands = b2MaxFloat( m_maxProfile.splitIslands, p.splitIslands );
+		m_maxProfile.jointEvents = b2MaxFloat( m_maxProfile.jointEvents, p.jointEvents );
 		m_maxProfile.hitEvents = b2MaxFloat( m_maxProfile.hitEvents, p.hitEvents );
 		m_maxProfile.refit = b2MaxFloat( m_maxProfile.refit, p.refit );
 		m_maxProfile.bullets = b2MaxFloat( m_maxProfile.bullets, p.bullets );
@@ -400,7 +532,6 @@ void Sample::Step( Settings& settings )
 		m_totalProfile.pairs += p.pairs;
 		m_totalProfile.collide += p.collide;
 		m_totalProfile.solve += p.solve;
-		m_totalProfile.mergeIslands += p.mergeIslands;
 		m_totalProfile.prepareStages += p.prepareStages;
 		m_totalProfile.solveConstraints += p.solveConstraints;
 		m_totalProfile.prepareConstraints += p.prepareConstraints;
@@ -413,6 +544,7 @@ void Sample::Step( Settings& settings )
 		m_totalProfile.storeImpulses += p.storeImpulses;
 		m_totalProfile.transforms += p.transforms;
 		m_totalProfile.splitIslands += p.splitIslands;
+		m_totalProfile.jointEvents += p.jointEvents;
 		m_totalProfile.hitEvents += p.hitEvents;
 		m_totalProfile.refit += p.refit;
 		m_totalProfile.bullets += p.bullets;
@@ -420,7 +552,7 @@ void Sample::Step( Settings& settings )
 		m_totalProfile.sensors += p.sensors;
 	}
 
-	if ( settings.drawProfile )
+	if ( m_context->drawProfile )
 	{
 		b2Profile p = b2World_GetProfile( m_worldId );
 
@@ -432,7 +564,6 @@ void Sample::Step( Settings& settings )
 			aveProfile.pairs = scale * m_totalProfile.pairs;
 			aveProfile.collide = scale * m_totalProfile.collide;
 			aveProfile.solve = scale * m_totalProfile.solve;
-			aveProfile.mergeIslands = scale * m_totalProfile.mergeIslands;
 			aveProfile.prepareStages = scale * m_totalProfile.prepareStages;
 			aveProfile.solveConstraints = scale * m_totalProfile.solveConstraints;
 			aveProfile.prepareConstraints = scale * m_totalProfile.prepareConstraints;
@@ -445,6 +576,7 @@ void Sample::Step( Settings& settings )
 			aveProfile.storeImpulses = scale * m_totalProfile.storeImpulses;
 			aveProfile.transforms = scale * m_totalProfile.transforms;
 			aveProfile.splitIslands = scale * m_totalProfile.splitIslands;
+			aveProfile.jointEvents = scale * m_totalProfile.jointEvents;
 			aveProfile.hitEvents = scale * m_totalProfile.hitEvents;
 			aveProfile.refit = scale * m_totalProfile.refit;
 			aveProfile.bullets = scale * m_totalProfile.bullets;
@@ -456,8 +588,6 @@ void Sample::Step( Settings& settings )
 		DrawTextLine( "pairs [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.pairs, aveProfile.pairs, m_maxProfile.pairs );
 		DrawTextLine( "collide [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.collide, aveProfile.collide, m_maxProfile.collide );
 		DrawTextLine( "solve [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.solve, aveProfile.solve, m_maxProfile.solve );
-		DrawTextLine( "> merge islands [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.mergeIslands, aveProfile.mergeIslands,
-					  m_maxProfile.mergeIslands );
 		DrawTextLine( "> prepare tasks [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.prepareStages, aveProfile.prepareStages,
 					  m_maxProfile.prepareStages );
 		DrawTextLine( "> solve constraints [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.solveConstraints, aveProfile.solveConstraints,
@@ -482,6 +612,8 @@ void Sample::Step( Settings& settings )
 					  m_maxProfile.splitIslands );
 		DrawTextLine( "> update transforms [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.transforms, aveProfile.transforms,
 					  m_maxProfile.transforms );
+		DrawTextLine( "> joint events [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.jointEvents, aveProfile.jointEvents,
+					  m_maxProfile.jointEvents );
 		DrawTextLine( "> hit events [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.hitEvents, aveProfile.hitEvents,
 					  m_maxProfile.hitEvents );
 		DrawTextLine( "> refit BVH [ave] (max) = %5.2f [%6.2f] (%6.2f)", p.refit, aveProfile.refit, m_maxProfile.refit );

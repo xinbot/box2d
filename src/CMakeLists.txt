@@ -38,8 +38,9 @@ set(BOX2D_SOURCE_FILES
 	manifold.c
 	math_functions.c
 	motor_joint.c
-	mouse_joint.c
 	mover.c
+	physics_world.c
+	physics_world.h
 	prismatic_joint.c
 	revolute_joint.c
 	sensor.c
@@ -56,8 +57,6 @@ set(BOX2D_SOURCE_FILES
 	types.c
 	weld_joint.c
 	wheel_joint.c
-	world.c
-	world.h
 )
 
 set(BOX2D_API_FILES
@@ -177,10 +176,8 @@ elseif (UNIX)
 		# -mfpu=neon
 		# target_compile_options(box2d PRIVATE)
 	else()
-		# x64
 		if (BOX2D_AVX2)
 			message(STATUS "Box2D using AVX2")
-			# FMA -mfma -mavx -march=native
 			target_compile_definitions(box2d PRIVATE BOX2D_AVX2)
 			target_compile_options(box2d PRIVATE -mavx2)
 		else()

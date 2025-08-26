@@ -252,11 +252,12 @@ static bool CustomFilter( b2ShapeId shapeIdA, b2ShapeId shapeIdB, void* context 
 	return true;
 }
 
-static bool PreSolveStatic( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context )
+static bool PreSolveStatic( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal, void* context )
 {
 	(void)shapeIdA;
 	(void)shapeIdB;
-	(void)manifold;
+	(void)point;
+	(void)normal;
 	ENSURE( context == NULL );
 	return false;
 }
@@ -302,7 +303,6 @@ int TestWorldCoverage( void )
 	b2World_Explode( worldId, &explosionDef );
 
 	b2World_SetContactTuning( worldId, 10.0f, 2.0f, 4.0f );
-	b2World_SetJointTuning( worldId, 10.0f, 2.0f );
 
 	b2World_SetMaximumLinearSpeed( worldId, 10.0f );
 	value = b2World_GetMaximumLinearSpeed( worldId );
@@ -347,7 +347,7 @@ static int TestSensor( void )
 	bodyDef.type = b2_dynamicBody;
 	bodyDef.isBullet = true;
 	bodyDef.gravityScale = 0.0f;
-	bodyDef.position = (b2Vec2){ 7.39814, 4.0 };
+	bodyDef.position = (b2Vec2){ 7.39814f, 4.0f };
 	bodyDef.linearVelocity = (b2Vec2){ -20.0f, 0.0f };
 	b2BodyId bulletId = b2CreateBody( worldId, &bodyDef );
 	shapeDef = b2DefaultShapeDef();
