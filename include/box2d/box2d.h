@@ -312,6 +312,12 @@ B2_API void b2Body_ApplyForceToCenter( b2BodyId bodyId, b2Vec2 force, bool wake 
 /// @param wake also wake up the body
 B2_API void b2Body_ApplyTorque( b2BodyId bodyId, float torque, bool wake );
 
+/// Clear the force and torque on this body. Forces and torques are automatically cleared after each world
+/// step. So this only needs to be called if the application wants to remove the effect of previous
+/// calls to apply forces and torques before the world step is called.
+/// @param bodyId The body id
+void b2Body_ClearForces( b2BodyId bodyId );
+
 /// Apply an impulse at a point. This immediately modifies the velocity.
 /// It also modifies the angular velocity if the point of application
 /// is not at the center of mass. This optionally wakes the body.
@@ -362,7 +368,7 @@ B2_API void b2Body_SetMassData( b2BodyId bodyId, b2MassData massData );
 /// Get the mass data for a body
 B2_API b2MassData b2Body_GetMassData( b2BodyId bodyId );
 
-/// This update the mass properties to the sum of the mass properties of the shapes.
+/// This updates the mass properties to the sum of the mass properties of the shapes.
 /// This normally does not need to be called unless you called SetMassData to override
 /// the mass and you later want to reset the mass.
 /// You may also use this when automatic mass computation has been disabled.
@@ -396,6 +402,9 @@ B2_API bool b2Body_IsAwake( b2BodyId bodyId );
 /// @warning Putting a body to sleep will put the entire island of bodies touching this body to sleep,
 /// which can be expensive and possibly unintuitive.
 B2_API void b2Body_SetAwake( b2BodyId bodyId, bool awake );
+
+/// Wake bodies touching this body. Works for static bodies.
+B2_API void b2Body_WakeTouching( b2BodyId bodyId );
 
 /// Enable or disable sleeping for this body. If sleeping is disabled the body will wake.
 B2_API void b2Body_EnableSleep( b2BodyId bodyId, bool enableSleep );
@@ -677,6 +686,16 @@ B2_API b2MassData b2Shape_ComputeMassData( b2ShapeId shapeId );
 /// todo need sample
 B2_API b2Vec2 b2Shape_GetClosestPoint( b2ShapeId shapeId, b2Vec2 target );
 
+/// Apply a wind force to the body for this shape using the density of air. This considers
+/// the projected area of the shape in the wind direction. This also considers
+/// the relative velocity of the shape.
+/// @param shapeId the shape id
+/// @param wind the wind velocity in world space
+/// @param drag the drag coefficient, the force that opposes the relative velocity
+/// @param lift the lift coefficient, the force that is perpendicular to the relative velocity
+/// @param wake should this wake the body
+B2_API void b2Shape_ApplyWind( b2ShapeId shapeId, b2Vec2 wind, float drag, float lift, bool wake );
+
 /// Chain Shape
 
 /// Create a chain shape
@@ -717,8 +736,8 @@ B2_API bool b2Chain_IsValid( b2ChainId id );
  * @{
  */
 
-/// Destroy a joint
-B2_API void b2DestroyJoint( b2JointId jointId );
+/// Destroy a joint. Optionally wake attached bodies.
+B2_API void b2DestroyJoint( b2JointId jointId, bool wakeAttached );
 
 /// Joint identifier validation. Provides validation for up to 64K allocations.
 B2_API bool b2Joint_IsValid( b2JointId id );
@@ -794,7 +813,6 @@ B2_API void b2Joint_SetTorqueThreshold( b2JointId jointId, float threshold );
 
 /// Get the torque threshold for joint events (N-m)
 B2_API float b2Joint_GetTorqueThreshold( b2JointId jointId );
-
 
 /**
  * @defgroup distance_joint Distance Joint

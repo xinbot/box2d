@@ -282,13 +282,13 @@ b2BodyId b2CreateBody( b2WorldId worldId, const b2BodyDef* def )
 	if ( def->name )
 	{
 		int i = 0;
-		while ( i < 31 && def->name[i] != 0 )
+		while ( i < B2_NAME_LENGTH - 1 && def->name[i] != 0 )
 		{
 			body->name[i] = def->name[i];
 			i += 1;
 		}
 
-		while ( i < 32 )
+		while ( i < B2_NAME_LENGTH )
 		{
 			body->name[i] = 0;
 			i += 1;
@@ -296,7 +296,7 @@ b2BodyId b2CreateBody( b2WorldId worldId, const b2BodyDef* def )
 	}
 	else
 	{
-		memset( body->name, 0, 32 * sizeof( char ) );
+		memset( body->name, 0, B2_NAME_LENGTH * sizeof( char ) );
 	}
 
 	body->userData = def->userData;
@@ -322,7 +322,6 @@ b2BodyId b2CreateBody( b2WorldId worldId, const b2BodyDef* def )
 	body->type = def->type;
 	body->flags = bodySim->flags;
 	body->enableSleep = def->enableSleep;
-	//body->isMarked = false;
 
 	// dynamic and kinematic bodies that are enabled need a island
 	if ( setId >= b2_awakeSet )
@@ -1000,6 +999,15 @@ void b2Body_ApplyTorque( b2BodyId bodyId, float torque, bool wake )
 	}
 }
 
+void b2Body_ClearForces( b2BodyId bodyId )
+{
+	b2World* world = b2GetWorld( bodyId.world0 );
+	b2Body* body = b2GetBodyFullId( world, bodyId );
+	b2BodySim* bodySim = b2GetBodySim( world, body );
+	bodySim->force = b2Vec2_zero;
+	bodySim->torque = 0.0f;
+}
+
 void b2Body_ApplyLinearImpulse( b2BodyId bodyId, b2Vec2 impulse, b2Vec2 point, bool wake )
 {
 	b2World* world = b2GetWorld( bodyId.world0 );
@@ -1127,20 +1135,20 @@ void b2Body_SetType( b2BodyId bodyId, b2BodyType type )
 		return;
 	}
 
-	if ( type == b2_dynamicBody )
-	{
-		body->flags |= b2_dynamicFlag;
-	}
-	else
-	{
-		body->flags &= ~b2_dynamicFlag;
-	}
-
 	// Stage 1: skip disabled bodies
 	if ( body->setIndex == b2_disabledSet )
 	{
 		// Disabled bodies don't change solver sets or islands when they change type.
 		body->type = type;
+
+		if ( type == b2_dynamicBody )
+		{
+			body->flags |= b2_dynamicFlag;
+		}
+		else
+		{
+			body->flags &= ~b2_dynamicFlag;
+		}
 
 		// Body type affects the mass properties
 		b2UpdateBodyMassData( world, body );
@@ -1192,6 +1200,15 @@ void b2Body_SetType( b2BodyId bodyId, b2BodyType type )
 
 	// Stage 5: change the body type and transfer body
 	body->type = type;
+
+	if ( type == b2_dynamicBody )
+	{
+		body->flags |= b2_dynamicFlag;
+	}
+	else
+	{
+		body->flags &= ~b2_dynamicFlag;
+	}
 
 	b2SolverSet* awakeSet = b2SolverSetArray_Get( &world->solverSets, b2_awakeSet );
 	b2SolverSet* sourceSet = b2SolverSetArray_Get( &world->solverSets, body->setIndex );
@@ -1301,18 +1318,24 @@ void b2Body_SetName( b2BodyId bodyId, const char* name )
 	b2World* world = b2GetWorld( bodyId.world0 );
 	b2Body* body = b2GetBodyFullId( world, bodyId );
 
-	if ( name != NULL )
+	if ( name )
 	{
-		for ( int i = 0; i < 31; ++i )
+		int i = 0;
+		while ( i < B2_NAME_LENGTH - 1 && name[i] != 0 )
 		{
 			body->name[i] = name[i];
+			i += 1;
 		}
 
-		body->name[31] = 0;
+		while ( i < B2_NAME_LENGTH )
+		{
+			body->name[i] = 0;
+			i += 1;
+		}
 	}
 	else
 	{
-		memset( body->name, 0, 32 * sizeof( char ) );
+		memset( body->name, 0, B2_NAME_LENGTH * sizeof( char ) );
 	}
 }
 
@@ -1517,6 +1540,36 @@ void b2Body_SetAwake( b2BodyId bodyId, bool awake )
 		}
 
 		b2TrySleepIsland( world, body->islandId );
+	}
+}
+
+void b2Body_WakeTouching(b2BodyId bodyId)
+{
+	b2World* world = b2GetWorld( bodyId.world0 );
+	b2Body* body = b2GetBodyFullId( world, bodyId );
+
+	int contactKey = body->headContactKey;
+	while ( contactKey != B2_NULL_INDEX )
+	{
+		int contactId = contactKey >> 1;
+		int edgeIndex = contactKey & 1;
+
+		b2Contact* contact = b2ContactArray_Get( &world->contacts, contactId );
+		b2Shape* shapeA = b2ShapeArray_Get( &world->shapes, contact->shapeIdA );
+		b2Shape* shapeB = b2ShapeArray_Get( &world->shapes, contact->shapeIdB );
+
+		if (shapeA->bodyId == bodyId.index1 - 1)
+		{
+			b2Body* otherBody = b2BodyArray_Get( &world->bodies, shapeB->bodyId );
+			b2WakeBody( world, otherBody );
+		}
+		else
+		{
+			b2Body* otherBody = b2BodyArray_Get( &world->bodies, shapeA->bodyId );
+			b2WakeBody( world, otherBody );
+		}
+
+		contactKey = contact->edges[edgeIndex].nextKey;
 	}
 }
 

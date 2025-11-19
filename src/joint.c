@@ -32,7 +32,7 @@ static b2JointDef b2DefaultJointDef( void )
 	def.torqueThreshold = FLT_MAX;
 	def.constraintHertz = 60.0f;
 	def.constraintDampingRatio = 2.0f;
-	def.drawScale = 1.0f;
+	def.drawScale = b2_lengthUnitsPerMeter;
 	return def;
 }
 
@@ -720,7 +720,7 @@ void b2DestroyJointInternal( b2World* world, b2Joint* joint, bool wakeBodies )
 	b2ValidateSolverSets( world );
 }
 
-void b2DestroyJoint( b2JointId jointId )
+void b2DestroyJoint( b2JointId jointId, bool wakeAttached )
 {
 	b2World* world = b2GetWorld( jointId.world0 );
 	B2_ASSERT( world->locked == false );
@@ -732,7 +732,7 @@ void b2DestroyJoint( b2JointId jointId )
 
 	b2Joint* joint = b2GetJointFullId( world, jointId );
 
-	b2DestroyJointInternal( world, joint, true );
+	b2DestroyJointInternal( world, joint, wakeAttached );
 }
 
 b2JointType b2Joint_GetType( b2JointId jointId )
@@ -1449,6 +1449,8 @@ void b2DrawJoint( b2DebugDraw* draw, b2World* world, b2Joint* joint )
 
 	b2HexColor color = b2_colorDarkSeaGreen;
 
+	float scale = b2MaxFloat( 0.0001f, draw->jointScale * joint->drawScale );
+
 	switch ( joint->type )
 	{
 		case b2_distanceJoint:
@@ -1456,52 +1458,45 @@ void b2DrawJoint( b2DebugDraw* draw, b2World* world, b2Joint* joint )
 			break;
 
 		case b2_filterJoint:
-			draw->DrawSegmentFcn( pA, pB, b2_colorGold, draw->context );
+			draw->DrawLineFcn( pA, pB, b2_colorGold, draw->context );
 			break;
 
 		case b2_motorJoint:
 			draw->DrawPointFcn( pA, 8.0f, b2_colorYellowGreen, draw->context );
 			draw->DrawPointFcn( pB, 8.0f, b2_colorPlum, draw->context );
-			draw->DrawSegmentFcn( pA, pB, b2_colorLightGray, draw->context );
+			draw->DrawLineFcn( pA, pB, b2_colorLightGray, draw->context );
 			break;
 
 		case b2_prismaticJoint:
-			b2DrawPrismaticJoint( draw, jointSim, transformA, transformB, joint->drawScale );
+			b2DrawPrismaticJoint( draw, jointSim, transformA, transformB, scale );
 			break;
 
 		case b2_revoluteJoint:
-			b2DrawRevoluteJoint( draw, jointSim, transformA, transformB, joint->drawScale );
+			b2DrawRevoluteJoint( draw, jointSim, transformA, transformB, scale );
 			break;
 
 		case b2_weldJoint:
-			b2DrawWeldJoint( draw, jointSim, transformA, transformB, joint->drawScale );
+			b2DrawWeldJoint( draw, jointSim, transformA, transformB, scale );
 			break;
 
 		case b2_wheelJoint:
-			b2DrawWheelJoint( draw, jointSim, transformA, transformB );
+			b2DrawWheelJoint( draw, jointSim, transformA, transformB, scale );
 			break;
 
 		default:
-			draw->DrawSegmentFcn( transformA.p, pA, color, draw->context );
-			draw->DrawSegmentFcn( pA, pB, color, draw->context );
-			draw->DrawSegmentFcn( transformB.p, pB, color, draw->context );
+			draw->DrawLineFcn( transformA.p, pA, color, draw->context );
+			draw->DrawLineFcn( pA, pB, color, draw->context );
+			draw->DrawLineFcn( transformB.p, pB, color, draw->context );
 			break;
 	}
 
 	if ( draw->drawGraphColors )
 	{
-		b2HexColor graphColors[B2_GRAPH_COLOR_COUNT] = {
-			b2_colorRed,	b2_colorOrange, b2_colorYellow,	   b2_colorGreen,	  b2_colorCyan,		b2_colorBlue,
-			b2_colorViolet, b2_colorPink,	b2_colorChocolate, b2_colorGoldenRod, b2_colorCoral,	b2_colorRosyBrown,
-			b2_colorAqua,	b2_colorPeru,	b2_colorLime,	   b2_colorGold,	  b2_colorPlum,		b2_colorSnow,
-			b2_colorTeal,	b2_colorKhaki,	b2_colorSalmon,	   b2_colorPeachPuff, b2_colorHoneyDew, b2_colorBlack,
-		};
-
 		int colorIndex = joint->colorIndex;
 		if ( colorIndex != B2_NULL_INDEX )
 		{
 			b2Vec2 p = b2Lerp( pA, pB, 0.5f );
-			draw->DrawPointFcn( p, 5.0f, graphColors[colorIndex], draw->context );
+			draw->DrawPointFcn( p, 5.0f, b2_graphColors[colorIndex], draw->context );
 		}
 	}
 
@@ -1511,7 +1506,7 @@ void b2DrawJoint( b2DebugDraw* draw, b2World* world, b2Joint* joint )
 		float torque = b2GetJointConstraintTorque( world, joint );
 		b2Vec2 p = b2Lerp( pA, pB, 0.5f );
 
-		draw->DrawSegmentFcn( p, b2MulAdd( p, 0.001f, force ), b2_colorAzure, draw->context );
+		draw->DrawLineFcn( p, b2MulAdd( p, 0.001f, force ), b2_colorAzure, draw->context );
 
 		char buffer[64];
 		snprintf( buffer, 64, "f = [%g, %g], t = %g", force.x, force.y, torque );

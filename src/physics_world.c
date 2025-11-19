@@ -32,7 +32,7 @@
 
 _Static_assert( B2_MAX_WORLDS > 0, "must be 1 or more" );
 _Static_assert( B2_MAX_WORLDS < UINT16_MAX, "B2_MAX_WORLDS limit exceeded" );
-b2World b2_worlds[B2_MAX_WORLDS];
+static b2World b2_worlds[B2_MAX_WORLDS];
 
 B2_ARRAY_SOURCE( b2BodyMoveEvent, b2BodyMoveEvent )
 B2_ARRAY_SOURCE( b2ContactBeginTouchEvent, b2ContactBeginTouchEvent )
@@ -217,6 +217,7 @@ b2WorldId b2CreateWorld( const b2WorldDef* def )
 	world->enableSleep = def->enableSleep;
 	world->locked = false;
 	world->enableWarmStarting = true;
+	world->enableContactSoftening = def->enableContactSoftening;
 	world->enableContinuous = def->enableContinuous;
 	world->enableSpeculative = true;
 	world->userTreeTask = NULL;
@@ -772,6 +773,7 @@ void b2World_Step( b2WorldId worldId, float timeStep, int subStepCount )
 	}
 
 	world->inv_h = context.inv_h;
+	world->inv_dt = context.inv_dt;
 
 	// Hertz values get reduced for large time steps
 	float contactHertz = b2MinFloat( world->contactHertz, 0.125f * context.inv_h );
@@ -856,7 +858,7 @@ static void b2DrawShape( b2DebugDraw* draw, b2Shape* shape, b2Transform xf, b2He
 			b2Segment* segment = &shape->segment;
 			b2Vec2 p1 = b2TransformPoint( xf, segment->point1 );
 			b2Vec2 p2 = b2TransformPoint( xf, segment->point2 );
-			draw->DrawSegmentFcn( p1, p2, color, draw->context );
+			draw->DrawLineFcn( p1, p2, color, draw->context );
 		}
 		break;
 
@@ -865,9 +867,9 @@ static void b2DrawShape( b2DebugDraw* draw, b2Shape* shape, b2Transform xf, b2He
 			b2Segment* segment = &shape->chainSegment.segment;
 			b2Vec2 p1 = b2TransformPoint( xf, segment->point1 );
 			b2Vec2 p2 = b2TransformPoint( xf, segment->point2 );
-			draw->DrawSegmentFcn( p1, p2, color, draw->context );
+			draw->DrawLineFcn( p1, p2, color, draw->context );
 			draw->DrawPointFcn( p2, 4.0f, color, draw->context );
-			draw->DrawSegmentFcn( p1, b2Lerp( p1, p2, 0.1f ), b2_colorPaleGreen, draw->context );
+			draw->DrawLineFcn( p1, b2Lerp( p1, p2, 0.1f ), b2_colorPaleGreen, draw->context );
 		}
 		break;
 
@@ -985,7 +987,6 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 
 	B2_ASSERT( b2IsValidAABB( draw->drawingBounds ) );
 
-	const float k_impulseScale = 1.0f;
 	const float k_axisScale = 0.3f;
 	b2HexColor speculativeColor = b2_colorGainsboro;
 	b2HexColor addColor = b2_colorGreen;
@@ -993,13 +994,6 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 	b2HexColor normalColor = b2_colorDimGray;
 	b2HexColor impulseColor = b2_colorMagenta;
 	b2HexColor frictionColor = b2_colorYellow;
-
-	b2HexColor graphColors[B2_GRAPH_COLOR_COUNT] = {
-		b2_colorRed,	b2_colorOrange, b2_colorYellow,	   b2_colorGreen,	  b2_colorCyan,		b2_colorBlue,
-		b2_colorViolet, b2_colorPink,	b2_colorChocolate, b2_colorGoldenRod, b2_colorCoral,	b2_colorRosyBrown,
-		b2_colorAqua,	b2_colorPeru,	b2_colorLime,	   b2_colorGold,	  b2_colorPlum,		b2_colorSnow,
-		b2_colorTeal,	b2_colorKhaki,	b2_colorSalmon,	   b2_colorPeachPuff, b2_colorHoneyDew, b2_colorBlack,
-	};
 
 	int bodyCapacity = b2GetIdCapacity( &world->bodyIdPool );
 	b2SetBitCountAndClear( &world->debugBodySet, bodyCapacity );
@@ -1048,7 +1042,7 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 				b2BodySim* bodySim = b2GetBodySim( world, body );
 
 				b2Transform transform = { bodySim->center, bodySim->transform.q };
-				draw->DrawSegmentFcn( bodySim->center0, bodySim->center, b2_colorWhiteSmoke, draw->context );
+				draw->DrawLineFcn( bodySim->center0, bodySim->center, b2_colorWhiteSmoke, draw->context );
 				draw->DrawTransformFcn( transform, draw->context );
 
 				b2Vec2 p = b2TransformPoint( transform, offset );
@@ -1078,7 +1072,7 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 			}
 
 			const float linearSlop = B2_LINEAR_SLOP;
-			if ( draw->drawContacts && body->type == b2_dynamicBody )
+			if ( draw->drawContactPoints && body->type == b2_dynamicBody )
 			{
 				int contactKey = body->headContactKey;
 				while ( contactKey != B2_NULL_INDEX )
@@ -1105,7 +1099,7 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 							{
 								// graph color
 								float pointSize = contact->colorIndex == B2_OVERFLOW_INDEX ? 7.5f : 5.0f;
-								draw->DrawPointFcn( point->point, pointSize, graphColors[contact->colorIndex], draw->context );
+								draw->DrawPointFcn( point->point, pointSize, b2_graphColors[contact->colorIndex], draw->context );
 								// m_context->draw.DrawString(point->position, "%d", point->color);
 							}
 							else if ( point->separation > linearSlop )
@@ -1128,14 +1122,16 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 							{
 								b2Vec2 p1 = point->point;
 								b2Vec2 p2 = b2MulAdd( p1, k_axisScale, normal );
-								draw->DrawSegmentFcn( p1, p2, normalColor, draw->context );
+								draw->DrawLineFcn( p1, p2, normalColor, draw->context );
 							}
-							else if ( draw->drawContactImpulses )
+							else if ( draw->drawContactForces )
 							{
+								// multiply by one-half due to relax iteration
+								float force = 0.5f * point->totalNormalImpulse * world->inv_dt;
 								b2Vec2 p1 = point->point;
-								b2Vec2 p2 = b2MulAdd( p1, k_impulseScale * point->totalNormalImpulse, normal );
-								draw->DrawSegmentFcn( p1, p2, impulseColor, draw->context );
-								snprintf( buffer, B2_ARRAY_COUNT( buffer ), "%.1f", 1000.0f * point->totalNormalImpulse );
+								b2Vec2 p2 = b2MulAdd( p1, draw->forceScale * force, normal );
+								draw->DrawLineFcn( p1, p2, impulseColor, draw->context );
+								snprintf( buffer, B2_ARRAY_COUNT( buffer ), "%.1f", force );
 								draw->DrawStringFcn( p1, buffer, b2_colorWhite, draw->context );
 							}
 
@@ -1145,13 +1141,14 @@ void b2World_Draw( b2WorldId worldId, b2DebugDraw* draw )
 								draw->DrawStringFcn( point->point, buffer, b2_colorOrange, draw->context );
 							}
 
-							if ( draw->drawFrictionImpulses )
+							if ( draw->drawFrictionForces )
 							{
+								float force = 0.5f * point->tangentImpulse * world->inv_h;
 								b2Vec2 tangent = b2RightPerp( normal );
 								b2Vec2 p1 = point->point;
-								b2Vec2 p2 = b2MulAdd( p1, k_impulseScale * point->tangentImpulse, tangent );
-								draw->DrawSegmentFcn( p1, p2, frictionColor, draw->context );
-								snprintf( buffer, B2_ARRAY_COUNT( buffer ), "%.1f", 1000.0f * point->tangentImpulse );
+								b2Vec2 p2 = b2MulAdd( p1, draw->forceScale * force, tangent );
+								draw->DrawLineFcn( p1, p2, frictionColor, draw->context );
+								snprintf( buffer, B2_ARRAY_COUNT( buffer ), "%.1f", force );
 								draw->DrawStringFcn( p1, buffer, b2_colorWhite, draw->context );
 							}
 						}
@@ -1750,10 +1747,10 @@ void b2World_DumpMemoryStats( b2WorldId worldId )
 	fprintf( file, "kinematic tree: %d\n", b2DynamicTree_GetByteCount( world->broadPhase.trees + b2_kinematicBody ) );
 	fprintf( file, "dynamic tree: %d\n", b2DynamicTree_GetByteCount( world->broadPhase.trees + b2_dynamicBody ) );
 	b2HashSet* moveSet = &world->broadPhase.moveSet;
-	fprintf( file, "moveSet: %d (%d, %d)\n", b2GetHashSetBytes( moveSet ), moveSet->count, moveSet->capacity );
+	fprintf( file, "moveSet: %d (%u, %u)\n", b2GetHashSetBytes( moveSet ), moveSet->count, moveSet->capacity );
 	fprintf( file, "moveArray: %d\n", b2IntArray_ByteCount( &world->broadPhase.moveArray ) );
 	b2HashSet* pairSet = &world->broadPhase.pairSet;
-	fprintf( file, "pairSet: %d (%d, %d)\n", b2GetHashSetBytes( pairSet ), pairSet->count, pairSet->capacity );
+	fprintf( file, "pairSet: %d (%u, %u)\n", b2GetHashSetBytes( pairSet ), pairSet->count, pairSet->capacity );
 	fprintf( file, "\n" );
 
 	// solver sets
@@ -2686,7 +2683,11 @@ void b2ValidateSolverSets( b2World* world )
 					b2Body* body = bodies + bodyId;
 					B2_ASSERT( body->setIndex == setIndex );
 					B2_ASSERT( body->localIndex == i );
-					B2_ASSERT( body->generation == body->generation );
+
+					if ( body->type == b2_dynamicBody )
+					{
+						B2_ASSERT( body->flags & b2_dynamicFlag );
+					}
 
 					if ( setIndex == b2_disabledSet )
 					{

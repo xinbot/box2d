@@ -14,6 +14,8 @@ namespace enki
 class TaskScheduler;
 };
 
+struct ImFont;
+
 struct SampleContext
 {
 	void Save();
@@ -21,7 +23,7 @@ struct SampleContext
 
 	struct GLFWwindow* window = nullptr;
 	Camera camera;
-	Draw draw;
+	Draw* draw;
 	float uiScale = 1.0f;
 	float hertz = 60.0f;
 	int subStepCount = 4;
@@ -29,27 +31,20 @@ struct SampleContext
 	bool restart = false;
 	bool pause = false;
 	bool singleStep = false;
-	bool drawJointExtras = false;
-	bool drawBounds = false;
-	bool drawMass = false;
-	bool drawBodyNames = false;
-	bool drawContactPoints = false;
-	bool drawContactNormals = false;
-	bool drawContactImpulses = false;
-	bool drawContactFeatures = false;
-	bool drawFrictionImpulses = false;
-	bool drawIslands = false;
-	bool drawGraphColors = false;
 	bool drawCounters = false;
 	bool drawProfile = false;
 	bool enableWarmStarting = true;
 	bool enableContinuous = true;
 	bool enableSleep = true;
+	bool showUI = true;
 
 	// These are persisted
 	int sampleIndex = 0;
-	bool drawShapes = true;
-	bool drawJoints = true;
+
+	b2DebugDraw debugDraw;
+	ImFont* regularFont;
+	ImFont* mediumFont;
+	ImFont* largeFont;
 };
 
 class Sample
@@ -60,7 +55,7 @@ public:
 
 	void CreateWorld( );
 
-	void DrawTitle( const char* string );
+	void ResetText();
 	virtual void Step( );
 	virtual void UpdateGui()
 	{
@@ -73,6 +68,7 @@ public:
 	virtual void MouseMove( b2Vec2 p );
 
 	void DrawTextLine( const char* text, ... );
+	void DrawColoredTextLine( b2HexColor color, const char* text, ... );
 	void ResetProfile();
 	void ShiftOrigin( b2Vec2 newOrigin );
 
@@ -105,6 +101,7 @@ public:
 	b2WorldId m_worldId;
 	b2JointId m_mouseJointId;
 	b2Vec2 m_mousePoint;
+	float m_mouseForceScale;
 	int m_stepCount;
 	b2Profile m_maxProfile;
 	b2Profile m_totalProfile;

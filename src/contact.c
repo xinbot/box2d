@@ -7,7 +7,6 @@
 #include "body.h"
 #include "core.h"
 #include "island.h"
-// #include "joint.h"
 #include "physics_world.h"
 #include "shape.h"
 #include "solver_set.h"
@@ -16,8 +15,6 @@
 // needed for dll export
 #include "box2d/box2d.h"
 
-// #include <float.h>
-// #include <math.h>
 #include <stddef.h>
 
 B2_ARRAY_SOURCE( b2Contact, b2Contact )
@@ -701,11 +698,4 @@ bool b2UpdateContact( b2World* world, b2ContactSim* contactSim, b2Shape* shapeA,
 	}
 
 	return touching;
-}
-
-b2Manifold b2ComputeManifold( b2Shape* shapeA, b2Transform transformA, b2Shape* shapeB, b2Transform transformB )
-{
-	b2ManifoldFcn* fcn = s_registers[shapeA->type][shapeB->type].fcn;
-	b2SimplexCache cache = { 0 };
-	return fcn( shapeA, transformA, shapeB, transformB, &cache );
 }

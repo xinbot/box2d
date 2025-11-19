@@ -117,6 +117,9 @@ typedef struct b2WorldDef
 	/// Enable continuous collision
 	bool enableContinuous;
 
+	/// Contact softening when mass ratios are large. Experimental.
+	bool enableContactSoftening;
+
 	/// Number of workers to use with the provided task system. Box2D performs best when using only
 	/// performance cores and accessing a single L2 cache. Efficiency cores and hyper-threading provide
 	/// little benefit and may even harm performance.
@@ -742,7 +745,7 @@ typedef struct b2PrismaticJointDef
 } b2PrismaticJointDef;
 
 /// Use this to initialize your joint definition
-/// @ingroupd prismatic_joint
+/// @ingroup prismatic_joint
 B2_API b2PrismaticJointDef b2DefaultPrismaticJointDef( void );
 
 /// Revolute joint definition
@@ -1338,7 +1341,7 @@ typedef struct b2DebugDraw
 	void ( *DrawSolidCapsuleFcn )( b2Vec2 p1, b2Vec2 p2, float radius, b2HexColor color, void* context );
 
 	/// Draw a line segment.
-	void ( *DrawSegmentFcn )( b2Vec2 p1, b2Vec2 p2, b2HexColor color, void* context );
+	void ( *DrawLineFcn )( b2Vec2 p1, b2Vec2 p2, b2HexColor color, void* context );
 
 	/// Draw a transform. Choose your own length scale.
 	void ( *DrawTransformFcn )( b2Transform transform, void* context );
@@ -1349,8 +1352,14 @@ typedef struct b2DebugDraw
 	/// Draw a string in world space
 	void ( *DrawStringFcn )( b2Vec2 p, const char* s, b2HexColor color, void* context );
 
-	/// Bounds to use if restricting drawing to a rectangular region
+	/// World bounds to use for debug draw
 	b2AABB drawingBounds;
+
+	/// Scale to use when drawing forces
+	float forceScale;
+
+	/// Global scaling for joint drawing
+	float jointScale;
 
 	/// Option to draw shapes
 	bool drawShapes;
@@ -1371,22 +1380,22 @@ typedef struct b2DebugDraw
 	bool drawBodyNames;
 
 	/// Option to draw contact points
-	bool drawContacts;
+	bool drawContactPoints;
 
 	/// Option to visualize the graph coloring used for contacts and joints
 	bool drawGraphColors;
 
-	/// Option to draw contact normals
-	bool drawContactNormals;
-
-	/// Option to draw contact normal impulses
-	bool drawContactImpulses;
-
 	/// Option to draw contact feature ids
 	bool drawContactFeatures;
 
-	/// Option to draw contact friction impulses
-	bool drawFrictionImpulses;
+	/// Option to draw contact normals
+	bool drawContactNormals;
+
+	/// Option to draw contact normal forces
+	bool drawContactForces;
+
+	/// Option to draw contact friction forces
+	bool drawFrictionForces;
 
 	/// Option to draw islands as bounding boxes
 	bool drawIslands;
