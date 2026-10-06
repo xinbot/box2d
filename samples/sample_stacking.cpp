@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "draw.h"
-#include "random.h"
 #include "sample.h"
+#include "utils.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -50,8 +50,8 @@ public:
 
 		// DrawCircle({0.0f, 2.0f}, 1.0f, b2_colorWhite);
 
-		b2Vec2 position = b2Body_GetPosition( m_bodyId );
-		DrawTextLine( "(x, y) = (%.2g, %.2g)", position.x, position.y );
+		b2Pos position = b2Body_GetPosition( m_bodyId );
+		DrawScreenTextLine( "(x, y) = (%.2g, %.2g)", position.x, position.y );
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -146,7 +146,7 @@ public:
 	enum
 	{
 		e_maxColumns = 10,
-		e_maxRows = 15,
+		e_maxRows = 80,
 		e_maxBullets = 8
 	};
 
@@ -326,16 +326,30 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	void Keyboard( int key, int action, int mods ) override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 230.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
+		bool consumed = false;
 
-		ImGui::Begin( "Vertical Stack", nullptr, ImGuiWindowFlags_NoResize );
+		switch ( key )
+		{
+			case 'B':
+				FireBullets();
+				consumed = true;
+				break;
 
-		ImGui::PushItemWidth( 120.0f );
+			default:
+				break;
+		}
+
+		if ( consumed == false )
+		{
+			Sample::Keyboard( key, action, mods );
+		}
+	}
+
+	bool DrawControls() override
+	{
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 
 		bool changed = false;
 		const char* shapeTypes[] = { "Circle", "Box" };
@@ -355,7 +369,7 @@ public:
 
 		ImGui::PopItemWidth();
 
-		if ( ImGui::Button( "Fire Bullets" ) || glfwGetKey( m_context->window, GLFW_KEY_B ) == GLFW_PRESS )
+		if ( ImGui::Button( "Fire Bullets" ) )
 		{
 			DestroyBullets();
 			FireBullets();
@@ -374,7 +388,7 @@ public:
 			CreateStacks();
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -438,10 +452,11 @@ public:
 		shapeDef.enableHitEvents = true;
 		// shapeDef.rollingResistance = 0.2f;
 		shapeDef.material.friction = 0.0f;
+		shapeDef.material.restitution = 0.8f;
 
 		float y = 0.75f;
 
-		for ( int i = 0; i < 10; ++i )
+		for ( int i = 0; i < 4; ++i )
 		{
 			bodyDef.position.y = y;
 
@@ -478,7 +493,7 @@ public:
 		int eventCount = (int)m_events.size();
 		for ( int i = 0; i < eventCount; ++i )
 		{
-			DrawTextLine( "%d, %d", m_events[i].indexA, m_events[i].indexB );
+			DrawScreenTextLine( "%d, %d", m_events[i].indexA, m_events[i].indexB );
 		}
 	}
 
@@ -673,22 +688,15 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 60.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 160.0f, height ) );
-
-		ImGui::Begin( "Cliff", nullptr, ImGuiWindowFlags_NoResize );
-
 		if ( ImGui::Button( "Flip" ) )
 		{
 			m_flip = !m_flip;
 			CreateBodies();
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -838,7 +846,7 @@ public:
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 			if ( i == 0 )
 			{
-				b2Body_ApplyLinearImpulse( bodyId, b2Vec2{ 0.2f, 0.0f }, b2Vec2{ x, 1.0f }, true );
+				b2Body_ApplyLinearImpulse( bodyId, b2Vec2{ 0.2f, 0.0f }, b2Pos{ x, 1.0f }, true );
 			}
 
 			x += 1.0f;

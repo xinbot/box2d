@@ -3,6 +3,8 @@
 #pragma once
 
 #include "box2d/id.h"
+#include "box2d/collision.h"
+#include "box2d/types.h"
 
 #include <stdbool.h>
 
@@ -16,6 +18,7 @@ extern "C"
 void CreateJointGrid( b2WorldId worldId );
 void CreateLargePyramid( b2WorldId worldId );
 void CreateManyPyramids( b2WorldId worldId );
+b2Capacity GetManyPyramidsCapacity( void );
 void CreateRain( b2WorldId worldId );
 float StepRain( b2WorldId worldId, int stepCount );
 void CreateSpinner( b2WorldId worldId );
@@ -23,6 +26,30 @@ float StepSpinner( b2WorldId worldId, int stepCount );
 void CreateSmash( b2WorldId worldId );
 void CreateTumbler( b2WorldId worldId );
 void CreateWasher( b2WorldId worldId );
+void CreateJunkyard( b2WorldId worldId );
+float StepJunkyard( b2WorldId worldId, int stepCount );
+
+void CreateSleep( b2WorldId worldId );
+float StepSleep( b2WorldId worldId, int stepCount );
+
+void CreateCompounds( b2WorldId worldId );
+
+void CreateQueries( b2WorldId worldId );
+float StepQueries( b2WorldId worldId, int stepCount );
+b2TreeStats GetQueryBenchmarkStats( void );
+int GetQueryBenchmarkCount( void );
+float GetQueryBenchmarkExtent( void );
+void GetQueryBenchmarkRay( int index, b2Pos* origin, b2Vec2* translation );
+
+void CreateTreeCast( b2WorldId worldId );
+float StepTreeCast( b2WorldId worldId, int stepCount );
+void DestroyTreeCast( void );
+b2TreeStats GetTreeCastBenchmarkStats( void );
+
+void CreateTileWorld( b2WorldId worldId );
+float StepTileWorld( b2WorldId worldId, int stepCount );
+void DestroyTileWorld( void );
+b2TreeStats GetTileWorldBenchmarkStats( void );
 
 #ifdef __cplusplus
 }

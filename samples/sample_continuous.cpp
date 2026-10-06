@@ -3,8 +3,8 @@
 
 #include "draw.h"
 #include "human.h"
-#include "random.h"
 #include "sample.h"
+#include "utils.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -27,7 +27,7 @@ public:
 
 	struct HitEvent
 	{
-		b2Vec2 point;
+		b2Pos point;
 		float speed;
 		int stepIndex;
 	};
@@ -117,15 +117,9 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 100.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
-
-		ImGui::Begin( "Bounce House", nullptr, ImGuiWindowFlags_NoResize );
-
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 		const char* shapeTypes[] = { "Circle", "Capsule", "Box" };
 		int shapeType = int( m_shapeType );
 		if ( ImGui::Combo( "Shape", &shapeType, shapeTypes, IM_ARRAYSIZE( shapeTypes ) ) )
@@ -133,13 +127,14 @@ public:
 			m_shapeType = ShapeType( shapeType );
 			Launch();
 		}
+		ImGui::PopItemWidth();
 
 		if ( ImGui::Checkbox( "hit events", &m_enableHitEvents ) )
 		{
 			b2Body_EnableHitEvents( m_bodyId, m_enableHitEvents );
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
@@ -170,8 +165,8 @@ public:
 			HitEvent* e = m_hitEvents + i;
 			if ( e->stepIndex > 0 && m_stepCount <= e->stepIndex + 30 )
 			{
-				DrawCircle(m_draw, e->point, 0.1f, b2_colorOrangeRed );
-				DrawWorldString( m_draw, m_camera, e->point, b2_colorWhite, "%.1f", e->speed );
+				DrawCircle( m_draw, e->point, 0.1f, b2_colorOrangeRed );
+				DrawString( m_draw, m_camera, e->point, b2_colorWhite, "%.1f", e->speed );
 			}
 		}
 
@@ -256,7 +251,7 @@ public:
 		b2CosSin cs2 = b2ComputeCosSin( m_time );
 		float gravity = 10.0f;
 		b2Vec2 gravityVec = { gravity * cs1.sine, gravity * cs2.cosine };
-		DrawLine( m_draw, b2Vec2_zero, b2Vec2{ 3.0f * cs1.sine, 3.0f * cs2.cosine }, b2_colorWhite );
+		DrawLine( m_draw, b2Pos_zero, b2ToPos( b2Vec2{ 3.0f * cs1.sine, 3.0f * cs2.cosine } ), b2_colorWhite );
 		m_time += timeStep;
 		m_countDown -= timeStep;
 		b2World_SetGravity( m_worldId, gravityVec );
@@ -300,7 +295,7 @@ public:
 
 		b2ChainDef chainDef = b2DefaultChainDef();
 		chainDef.points = points;
-		chainDef.count = 4;
+		chainDef.pointCount = 4;
 		chainDef.isLoop = true;
 
 		b2CreateChain( groundId, &chainDef );
@@ -340,24 +335,19 @@ public:
 		// m_shapeId = b2CreatePolygonShape( m_bodyId, &shapeDef, &box );
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 140.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
-
-		ImGui::Begin( "Chain Drop", nullptr, ImGuiWindowFlags_NoResize );
-
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 		ImGui::SliderFloat( "Speed", &m_speed, -100.0f, 0.0f, "%.0f" );
 		ImGui::SliderFloat( "Y Offset", &m_yOffset, -1.0f, 1.0f, "%.1f" );
+		ImGui::PopItemWidth();
 
 		if ( ImGui::Button( "Launch" ) )
 		{
 			Launch();
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -423,7 +413,7 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = points;
-			chainDef.count = count;
+			chainDef.pointCount = count;
 			chainDef.isLoop = true;
 
 			b2CreateChain( groundId, &chainDef );
@@ -597,15 +587,8 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 110.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 140.0f, height ) );
-
-		ImGui::Begin( "Skinny Box", nullptr, ImGuiWindowFlags_NoResize );
-
 		ImGui::Checkbox( "Capsule", &m_capsule );
 
 		if ( ImGui::Button( "Launch" ) )
@@ -615,7 +598,7 @@ public:
 
 		ImGui::Checkbox( "Auto Test", &m_autoTest );
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
@@ -723,7 +706,7 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = points;
-			chainDef.count = 20;
+			chainDef.pointCount = 20;
 			chainDef.isLoop = true;
 			chainDef.materials = &material;
 			chainDef.materialCount = 1;
@@ -867,15 +850,9 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 140.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 180.0f, height ) );
-
-		ImGui::Begin( "Ghost Bumps", nullptr, ImGuiWindowFlags_NoResize );
-		ImGui::PushItemWidth( 100.0f );
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 
 		if ( ImGui::Checkbox( "Chain", &m_useChain ) )
 		{
@@ -918,7 +895,8 @@ public:
 		}
 
 		ImGui::PopItemWidth();
-		ImGui::End();
+
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -1132,9 +1110,9 @@ public:
 		b2ContactData data;
 		b2Body_GetContactData( m_ballId, &data, 1 );
 
-		b2Vec2 p = b2Body_GetPosition( m_ballId );
+		b2Pos p = b2Body_GetPosition( m_ballId );
 		b2Vec2 v = b2Body_GetLinearVelocity( m_ballId );
-		DrawTextLine( "p.x = %.9f, v.y = %.9f", p.x, v.y );
+		DrawScreenTextLine( "p.x = %.9f, v.y = %.9f", p.x, v.y );
 
 		Sample::Step();
 	}
@@ -1192,7 +1170,7 @@ public:
 			ballShapeDef.material.restitution = 1.f;
 			b2CreateCircleShape( m_ballId, &ballShapeDef, &ballShape );
 
-			b2Body_SetLinearVelocity( m_ballId, { 0.f, -2.9f } ); // Initial velocity
+			b2Body_SetLinearVelocity( m_ballId, { 0.f, -2.9f } );	   // Initial velocity
 			b2Body_SetMotionLocks( m_ballId, { false, false, true } ); // Do not rotate a ball
 		}
 	}
@@ -1202,9 +1180,9 @@ public:
 		b2ContactData data;
 		b2Body_GetContactData( m_ballId, &data, 1 );
 
-		b2Vec2 p = b2Body_GetPosition( m_ballId );
+		b2Pos p = b2Body_GetPosition( m_ballId );
 		b2Vec2 v = b2Body_GetLinearVelocity( m_ballId );
-		DrawTextLine( "p.x = %.9f, v.y = %.9f", p.x, v.y );
+		DrawScreenTextLine( "p.x = %.9f, v.y = %.9f", p.x, v.y );
 
 		Sample::Step();
 	}
@@ -1453,7 +1431,7 @@ public:
 		m_frameCount = 1;
 	}
 
-	void Keyboard( int key ) override
+	void Keyboard( int key, int action, int mods ) override
 	{
 		switch ( key )
 		{
@@ -1478,18 +1456,12 @@ public:
 				m_continuous = !m_continuous;
 				break;
 
-			case GLFW_KEY_V:
-				Clear();
-				m_speculative = !m_speculative;
-				b2World_EnableSpeculative( m_worldId, m_speculative );
-				break;
-
 			case GLFW_KEY_S:
 				m_frameSkip = m_frameSkip > 0 ? 0 : 60;
 				break;
 
 			default:
-				Sample::Keyboard( key );
+				Sample::Keyboard( key, action, mods );
 				break;
 		}
 	}
@@ -1583,14 +1555,14 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = vs;
-			chainDef.count = 5;
+			chainDef.pointCount = 5;
 			chainDef.isLoop = true;
 			b2CreateChain( groundId, &chainDef );
 		}
 
 		// Flippers
 		{
-			b2Vec2 p1 = { -2.0f, 0.0f }, p2 = { 2.0f, 0.0f };
+			b2Pos p1 = { -2.0f, 0.0f }, p2 = { 2.0f, 0.0f };
 
 			b2BodyDef bodyDef = b2DefaultBodyDef();
 			bodyDef.type = b2_dynamicBody;
@@ -1617,14 +1589,14 @@ public:
 			jointDef.enableLimit = true;
 
 			jointDef.motorSpeed = 0.0f;
-			jointDef.base.localFrameA.p = p1;
+			jointDef.base.localFrameA.p = b2ToVec2( p1 );
 			jointDef.base.bodyIdB = leftFlipperId;
 			jointDef.lowerAngle = -30.0f * B2_PI / 180.0f;
 			jointDef.upperAngle = 5.0f * B2_PI / 180.0f;
 			m_leftJointId = b2CreateRevoluteJoint( m_worldId, &jointDef );
 
 			jointDef.motorSpeed = 0.0f;
-			jointDef.base.localFrameA.p = p2;
+			jointDef.base.localFrameA.p = b2ToVec2( p2 );
 			jointDef.base.bodyIdB = rightFlipperId;
 			jointDef.lowerAngle = -5.0f * B2_PI / 180.0f;
 			jointDef.upperAngle = 30.0f * B2_PI / 180.0f;
@@ -1649,7 +1621,7 @@ public:
 			b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
-			jointDef.base.localFrameA.p = bodyDef.position;
+			jointDef.base.localFrameA.p = b2ToVec2( bodyDef.position );
 			jointDef.base.localFrameB.p = b2Vec2_zero;
 			jointDef.enableMotor = true;
 			jointDef.maxMotorTorque = 0.1f;
@@ -1659,7 +1631,7 @@ public:
 			bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box1 );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box2 );
-			jointDef.base.localFrameA.p = bodyDef.position;
+			jointDef.base.localFrameA.p = b2ToVec2( bodyDef.position );
 			jointDef.base.bodyIdB = bodyId;
 			b2CreateRevoluteJoint( m_worldId, &jointDef );
 		}
@@ -1697,11 +1669,17 @@ public:
 		}
 	}
 
+	bool DrawControls() override
+	{
+		ImGui::Text( "Flipper: press A" );
+		return true;
+	}
+
 	void Step() override
 	{
 		Sample::Step();
 
-		if ( glfwGetKey( m_context->window, GLFW_KEY_SPACE ) == GLFW_PRESS )
+		if ( glfwGetKey( m_context->window, GLFW_KEY_A ) == GLFW_PRESS )
 		{
 			b2RevoluteJoint_SetMotorSpeed( m_leftJointId, 20.0f );
 			b2RevoluteJoint_SetMotorSpeed( m_rightJointId, -20.0f );
@@ -1772,3 +1750,121 @@ public:
 };
 
 static int sampleWedge = RegisterSample( "Continuous", "Wedge", Wedge::Create );
+
+// This shows how adjusting the CCD safety factor can engage continuous collision at
+// lower speeds to avoid the slight overlap that happens with discrete collision detection.
+// The best way to run this sample is:
+// 1. press pause (P)
+// 2. restart (R) or press the Drop button
+// 3. then single step (.)
+// Then look at the metrics and overlap. The color of the shape gets darker when it is using
+// continuous collision detection.
+class SafetyFactor : public Sample
+{
+public:
+	explicit SafetyFactor( SampleContext* context )
+		: Sample( context )
+	{
+		if ( m_context->restart == false )
+		{
+			m_context->camera.center = { 0.0f, 3.0f };
+			m_context->camera.zoom = 6.0f;
+		}
+
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			bodyDef.position = { 0.0f, -1.0f };
+			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
+
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+			b2Polygon box = b2MakeBox( 20.0f, 1.0f );
+			b2CreatePolygonShape( groundId, &shapeDef, &box );
+		}
+
+		m_bodyId = b2_nullBodyId;
+		m_extent = 0.5f;
+		m_height = 0.3f;
+		m_safetyFactor = 0.1f;
+		m_overlap = 0.0f;
+
+		Launch();
+	}
+
+	void Launch()
+	{
+		if ( B2_IS_NON_NULL( m_bodyId ) )
+		{
+			b2DestroyBody( m_bodyId );
+		}
+
+		b2BodyDef bodyDef = b2DefaultBodyDef();
+		bodyDef.type = b2_dynamicBody;
+		bodyDef.position = { 0.0f, m_height + m_extent };
+		bodyDef.safetyFactor = m_safetyFactor;
+		m_bodyId = b2CreateBody( m_worldId, &bodyDef );
+
+		b2ShapeDef shapeDef = b2DefaultShapeDef();
+		b2Polygon box = b2MakeSquare( m_extent );
+		b2CreatePolygonShape( m_bodyId, &shapeDef, &box );
+
+		m_overlap = 0.0f;
+	}
+
+	void Step() override
+	{
+		Sample::Step();
+
+		if ( m_didStep )
+		{
+			// Contacts are computed at the beginning of the step, so the manifold holds the initial separation.
+			b2ContactData data;
+			int count = b2Body_GetContactData( m_bodyId, &data, 1 );
+			if ( count == 1 )
+			{
+				for ( int j = 0; j < data.manifold.pointCount; ++j )
+				{
+					m_overlap = b2MaxFloat( m_overlap, -data.manifold.points[j].separation );
+				}
+			}
+		}
+
+		DrawLine( m_draw, b2ToPos( b2Vec2{ -3.0f, -m_overlap } ), b2ToPos( b2Vec2{ 3.0f, -m_overlap } ), b2_colorRed );
+
+		float timeStep = m_context->hertz > 0.0f ? 1.0f / m_context->hertz : 0.0f;
+		float motion = timeStep * b2Length( b2Body_GetLinearVelocity( m_bodyId ) );
+
+		DrawScreenTextLine( "actual movement = %.3f m", motion );
+		DrawScreenTextLine( "fast movement = %.3f m", m_safetyFactor * m_extent );
+		DrawScreenTextLine( "overlap = %.4f m", m_overlap );
+	}
+
+	bool DrawControls() override
+	{
+		bool changed = false;
+
+		ImGui::PushItemWidth( 10.0f * ImGui::GetFontSize() );
+		changed |= ImGui::SliderFloat( "Height", &m_height, 0.0f, 2.0f, "%.2f" );
+		changed |= ImGui::SliderFloat( "Safety", &m_safetyFactor, 0.0f, 1.0f, "%.2f" );
+		ImGui::PopItemWidth();
+
+		if ( ImGui::Button( "Drop" ) || changed )
+		{
+			Launch();
+		}
+
+		return true;
+	}
+
+	static Sample* Create( SampleContext* context )
+	{
+		return new SafetyFactor( context );
+	}
+
+	b2BodyId m_bodyId;
+	float m_extent;
+	float m_height;
+	float m_safetyFactor;
+	float m_overlap;
+};
+
+static int sampleSafetyFactor = RegisterSample( "Continuous", "Safety Factor", SafetyFactor::Create );

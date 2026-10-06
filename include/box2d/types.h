@@ -6,7 +6,7 @@
 #include "base.h"
 #include "collision.h"
 #include "id.h"
-#include "math_functions.h"
+#include "math_types.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,35 +15,16 @@
 #define B2_DEFAULT_MASK_BITS UINT64_MAX
 
 /// Task interface
-/// This is prototype for a Box2D task. Your task system is expected to invoke the Box2D task with these arguments.
-/// The task spans a range of the parallel-for: [startIndex, endIndex)
-/// The worker index must correctly identify each worker in the user thread pool, expected in [0, workerCount).
-/// A worker must only exist on only one thread at a time and is analogous to the thread index.
-/// The task context is the context pointer sent from Box2D when it is enqueued.
-/// The startIndex and endIndex are expected in the range [0, itemCount) where itemCount is the argument to b2EnqueueTaskCallback
-/// below. Box2D expects startIndex < endIndex and will execute a loop like this:
-///
-/// @code{.c}
-/// for (int i = startIndex; i < endIndex; ++i)
-/// {
-/// 	DoWork();
-/// }
-/// @endcode
+/// This is the prototype for a Box2D task. Your task system is expected to run this callback on a worker thread,
+/// exactly once per enqueue, passing back the same taskContext pointer supplied to b2EnqueueTaskCallback.
 /// @ingroup world
-typedef void b2TaskCallback( int startIndex, int endIndex, uint32_t workerIndex, void* taskContext );
+typedef void b2TaskCallback( void* taskContext );
 
-/// These functions can be provided to Box2D to invoke a task system. These are designed to work well with enkiTS.
+/// These functions can be provided to Box2D to invoke a task system.
 /// Returns a pointer to the user's task object. May be nullptr. A nullptr indicates to Box2D that the work was executed
 /// serially within the callback and there is no need to call b2FinishTaskCallback.
-/// The itemCount is the number of Box2D work items that are to be partitioned among workers by the user's task system.
-/// This is essentially a parallel-for. The minRange parameter is a suggestion of the minimum number of items to assign
-/// per worker to reduce overhead. For example, suppose the task is small and that itemCount is 16. A minRange of 8 suggests
-/// that your task system should split the work items among just two workers, even if you have more available.
-/// In general the range [startIndex, endIndex) send to b2TaskCallback should obey:
-/// endIndex - startIndex >= minRange
-/// The exception of course is when itemCount < minRange.
 /// @ingroup world
-typedef void* b2EnqueueTaskCallback( b2TaskCallback* task, int itemCount, int minRange, void* taskContext, void* userContext );
+typedef void* b2EnqueueTaskCallback( b2TaskCallback* task, void* taskContext, void* userContext );
 
 /// Finishes a user task object that wraps a Box2D task.
 /// @ingroup world
@@ -61,19 +42,49 @@ typedef float b2FrictionCallback( float frictionA, uint64_t userMaterialIdA, flo
 /// @ingroup world
 typedef float b2RestitutionCallback( float restitutionA, uint64_t userMaterialIdA, float restitutionB, uint64_t userMaterialIdB );
 
-/// Result from b2World_RayCastClosest
+/// Result from b2World_CastRayClosest
 /// If there is initial overlap the fraction and normal will be zero while the point is an arbitrary point in the overlap region.
 /// @ingroup world
 typedef struct b2RayResult
 {
+	/// The shape hit.
 	b2ShapeId shapeId;
-	b2Vec2 point;
+	b2Pos point;
 	b2Vec2 normal;
+
+	/// The fraction of the input ray.
 	float fraction;
+
+	/// The number of BVH nodes visited. Diagnostic.
 	int nodeVisits;
+
+	/// The number of BVH leaves visited. Diagnostic.
 	int leafVisits;
+
+	/// Did the ray hit? If false, all other data is invalid.
 	bool hit;
 } b2RayResult;
+
+/// Optional world capacities that can be used to avoid run-time allocations.
+/// @see b2World_GetMaxCapacity
+/// @ingroup world
+typedef struct b2Capacity
+{
+	/// Number of expected static shapes.
+	int staticShapeCount;
+
+	/// Number of expected dynamic and kinematic shapes.
+	int dynamicShapeCount;
+
+	/// Number of expected static bodies.
+	int staticBodyCount;
+
+	/// Number of expected dynamic and kinematic bodies.
+	int dynamicBodyCount;
+
+	/// Number of expected contacts.
+	int contactCount;
+} b2Capacity;
 
 /// World definition used to create a simulation world.
 /// Must be initialized using b2DefaultWorldDef().
@@ -86,6 +97,13 @@ typedef struct b2WorldDef
 	/// Restitution speed threshold, usually in m/s. Collisions above this
 	/// speed have restitution applied (will bounce).
 	float restitutionThreshold;
+
+	/// Number of iterations of the restitution solver. More iterations can lead to less box spinning.
+	/// @see B2_MAX_RESTITUTION_ITERATIONS
+	int restitutionIterations;
+
+	/// Enable full contact propagation in the restitution solver. Expensive.
+	bool enableRestitutionPropagation;
 
 	/// Threshold speed for hit events. Usually meters per second.
 	float hitEventThreshold;
@@ -117,16 +135,13 @@ typedef struct b2WorldDef
 	/// Enable continuous collision
 	bool enableContinuous;
 
-	/// Contact softening when mass ratios are large. Experimental.
-	bool enableContactSoftening;
-
-	/// Number of workers to use with the provided task system. Box2D performs best when using only
-	/// performance cores and accessing a single L2 cache. Efficiency cores and hyper-threading provide
+	/// Number of workers for multithreading. Box2D performs best when using performance cores and
+	/// accessing a single L3 cache (uniform memory). Efficiency cores and SMT provide
 	/// little benefit and may even harm performance.
-	/// @note Box2D does not create threads. This is the number of threads your applications has created
-	/// that you are allocating to b2World_Step.
-	/// @warning Do not modify the default value unless you are also providing a task system and providing
-	/// task callbacks (enqueueTask and finishTask).
+	/// This is clamped to the range [1, B2_MAX_WORKERS].
+	/// Using a value above 1 will turn on multithreading. If task callbacks are provided
+	/// then Box2D will use the user provided task system. Otherwise Box2D will create threads and use
+	/// an internal scheduler.
 	int workerCount;
 
 	/// Function to spawn tasks
@@ -140,6 +155,9 @@ typedef struct b2WorldDef
 
 	/// User data
 	void* userData;
+
+	/// Optional initial capacities
+	b2Capacity capacity;
 
 	/// Used internally to detect a valid definition. DO NOT SET.
 	int internalValue;
@@ -193,7 +211,7 @@ typedef struct b2BodyDef
 	/// The initial world position of the body. Bodies should be created with the desired position.
 	/// @note Creating bodies at the origin and then moving them nearly doubles the cost of body creation, especially
 	/// if the body is moved after shapes have been added.
-	b2Vec2 position;
+	b2Pos position;
 
 	/// The initial world rotation of the body. Use b2MakeRot() if you have an angle.
 	b2Rot rotation;
@@ -223,7 +241,14 @@ typedef struct b2BodyDef
 	/// Sleep speed threshold, default is 0.05 meters per second
 	float sleepThreshold;
 
-	/// Optional body name for debugging. Up to 31 characters (excluding null termination)
+	/// Continuous collision safety factor. The solver only uses continuous collision if there is a
+	/// risk of tunneling. If the body is moving fast enough to risk tunneling then it is considered a "fast body".
+	/// This improves performance and prevents movement hitches. If a body moving N meter risks tunneling, then the
+	/// body will be considered fast if it moves more than a safetyFactor times N meters over one full time step.
+	/// Non-dimensional. Recommended range [0.01, 0.5]. Default is 0.5 for high performance with low tunneling risk.
+	float safetyFactor;
+
+	/// Optional body name for debugging. Up to B2_NAME_LENGTH characters
 	const char* name;
 
 	/// Use this to store application specific body data.
@@ -239,10 +264,20 @@ typedef struct b2BodyDef
 	/// Is this body initially awake or sleeping?
 	bool isAwake;
 
-	/// Treat this body as high speed object that performs continuous collision detection
+	/// Treat this body as a high speed object that performs continuous collision detection
 	/// against dynamic and kinematic bodies, but not other bullet bodies.
 	/// @warning Bullets should be used sparingly. They are not a solution for general dynamic-versus-dynamic
-	/// continuous collision.
+	/// continuous collision. They do not guarantee accurate collision if both bodies are fast moving because
+	/// the bullet does a continuous check after all non-bullet bodies have moved. You could get unlucky and have
+	/// the bullet body end a time step very close to a non-bullet body and the non-bullet body then moves over
+	/// the bullet body. In continuous collision, initial overlap is ignored to avoid freezing bodies in place.
+	/// I do not recommend using them for game projectiles if precise collision timing is needed. Instead consider
+	/// using a ray or shape cast. You can use a marching ray or shape cast for projectile that moves over time.
+	/// If you want a fast moving projectile to collide with a fast moving target, you need to consider the relative
+	/// movement in your ray or shape cast. This is out of the scope of Box2D.
+	/// So what are good use cases for bullets? Pinball games or games with dynamic containers that hold other objects.
+	/// It should be a use case where it doesn't break the game if there is a collision missed, but having them
+	/// captured improves the quality of the game.
 	bool isBullet;
 
 	/// Used to disable a body. A disabled body does not move or collide.
@@ -251,6 +286,10 @@ typedef struct b2BodyDef
 	/// This allows this body to bypass rotational speed limits. Should only be used
 	/// for circular objects, like wheels.
 	bool allowFastRotation;
+
+	/// Enable contact recycling. True by default. Leaving this enabled improves performance
+	/// but may lead to ghost collision that should be avoided on characters.
+	bool enableContactRecycling;
 
 	/// Used internally to detect a valid definition. DO NOT SET.
 	int internalValue;
@@ -402,13 +441,16 @@ typedef struct b2ShapeDef
 	/// @see enableSensorEvents
 	bool isSensor;
 
-	/// Enable sensor events for this shape. This applies to sensors and non-sensors. False by default, even for sensors.
+	/// Enable sensor events for this shape. This applies to sensors and non-sensors. Both shapes involved must have this flag set
+	/// to true. False by default, even for sensors.
 	bool enableSensorEvents;
 
-	/// Enable contact events for this shape. Only applies to kinematic and dynamic bodies. Ignored for sensors. False by default.
+	/// Enable contact events for this shape. Only applies to kinematic and dynamic bodies. Only one shape involved needs this
+	/// flag set to true. Ignored for sensors. False by default.
 	bool enableContactEvents;
 
-	/// Enable hit events for this shape. Only applies to kinematic and dynamic bodies. Ignored for sensors. False by default.
+	/// Enable hit events for this shape. Only applies to kinematic and dynamic bodies. Only one shape involved needs this flag
+	/// set to true. Ignored for sensors. False by default.
 	bool enableHitEvents;
 
 	/// Enable pre-solve contact events for this shape. Only applies to dynamic bodies. These are expensive
@@ -421,6 +463,7 @@ typedef struct b2ShapeDef
 	bool invokeContactCreation;
 
 	/// Should the body update the mass properties when this shape is created. Default is true.
+	/// Warning: if this is false, you MUST call b2Body_UpdateMassFromShapes or b2Body_SetMassData before simulating the world.
 	bool updateBodyMass;
 
 	/// Used internally to detect a valid definition. DO NOT SET.
@@ -436,11 +479,10 @@ B2_API b2ShapeDef b2DefaultShapeDef( void );
 /// - chains have no mass and should be used on static bodies
 /// - chains have a counter-clockwise winding order (normal points right of segment direction)
 /// - chains are either a loop or open
-/// - a chain must have at least 4 points
 /// - the distance between any two points must be greater than B2_LINEAR_SLOP
 /// - a chain shape should not self intersect (this is not validated)
-/// - an open chain shape has NO COLLISION on the first and final edge
-/// - you may overlap two open chains on their first three and/or last three points to get smooth collision
+/// - an open chain shape needs a leading and trailing ghost point.
+/// - you may overlap two open chains using the ghost points to get smooth collision.
 /// - a chain shape creates multiple line segment shapes on the body
 /// https://en.wikipedia.org/wiki/Polygonal_chain
 /// Must be initialized using b2DefaultChainDef().
@@ -451,23 +493,32 @@ typedef struct b2ChainDef
 	/// Use this to store application specific shape data.
 	void* userData;
 
-	/// An array of at least 4 points. These are cloned and may be temporary.
+	/// Array of chain points. Each consecutive pair forms a segment. For a loop
+	/// the last and first point form a segment. Cloned.
 	const b2Vec2* points;
 
-	/// The point count, must be 4 or more.
-	int count;
+	/// The point count. At least 2 for an open chain and at least 3 for a loop.
+	/// segmentCount = isLoop ? pointCount : pointCount - 1
+	int pointCount;
 
-	/// Surface materials for each segment. These are cloned.
+	/// Leading ghost point for an open chain. Distance from first point must be greater
+	/// than B2_LINEAR_SLOP. Ignored for loops.
+	b2Vec2 ghost1;
+
+	/// Ending ghost point for an open chain. Distance from last point must be greater
+	/// than B2_LINEAR_SLOP. Ignored for loops.
+	b2Vec2 ghost2;
+
+	/// One material for the whole chain or one for each segment. Cloned.
 	const b2SurfaceMaterial* materials;
 
-	/// The material count. Must be 1 or count. This allows you to provide one
-	/// material for all segments or a unique material per segment.
+	/// The material count. Must be 1 or the segment count.
 	int materialCount;
 
 	/// Contact filtering data.
 	b2Filter filter;
 
-	/// Indicates a closed chain formed by connecting the first and last points
+	/// Indicates a closed chain formed by connecting the first and last point.
 	bool isLoop;
 
 	/// Enable sensors to detect this chain. False by default.
@@ -481,51 +532,58 @@ typedef struct b2ChainDef
 /// @ingroup shape
 B2_API b2ChainDef b2DefaultChainDef( void );
 
-//! @cond
 /// Profiling data. Times are in milliseconds.
+/// Comments below are just to make Doxygen happy.
 typedef struct b2Profile
 {
-	float step;
-	float pairs;
-	float collide;
-	float solve;
-	float prepareStages;
-	float solveConstraints;
-	float prepareConstraints;
-	float integrateVelocities;
-	float warmStart;
-	float solveImpulses;
-	float integratePositions;
-	float relaxImpulses;
-	float applyRestitution;
-	float storeImpulses;
-	float splitIslands;
-	float transforms;
-	float sensorHits;
-	float jointEvents;
-	float hitEvents;
-	float refit;
-	float bullets;
-	float sleepIslands;
-	float sensors;
+	float step;				   ///< profile
+	float pairs;			   ///< profile
+	float collide;			   ///< profile
+	float solve;			   ///< profile
+	float solverSetup;		   ///< profile
+	float constraints;		   ///< profile
+	float prepareConstraints;  ///< profile
+	float integrateVelocities; ///< profile
+	float warmStart;		   ///< profile
+	float solveImpulses;	   ///< profile
+	float integratePositions;  ///< profile
+	float relaxImpulses;	   ///< profile
+	float restitution;		   ///< profile
+	float storeImpulses;	   ///< profile
+	float splitIslands;		   ///< profile
+	float transforms;		   ///< profile
+	float sensorHits;		   ///< profile
+	float jointEvents;		   ///< profile
+	float hitEvents;		   ///< profile
+	float refit;			   ///< profile
+	float bullets;			   ///< profile
+	float sleepIslands;		   ///< profile
+	float sensors;			   ///< profile
 } b2Profile;
 
 /// Counters that give details of the simulation size.
+/// Comments below are just to make Doxygen happy.
 typedef struct b2Counters
 {
-	int bodyCount;
-	int shapeCount;
-	int contactCount;
-	int jointCount;
-	int islandCount;
-	int stackUsed;
-	int staticTreeHeight;
-	int treeHeight;
-	int byteCount;
-	int taskCount;
-	int colorCounts[24];
+	int64_t byteCount;	  ///< counter
+	int bodyCount;		  ///< counter
+	int shapeCount;		  ///< counter
+	int contactCount;	  ///< counter
+	int jointCount;		  ///< counter
+	int islandCount;	  ///< counter
+	int stackUsed;		  ///< counter
+	int staticTreeHeight; ///< counter
+	int treeHeight;		  ///< counter
+	int taskCount;		  ///< counter
+	int colorCounts[24];  ///< counter
+
+	/// Number of contacts touched by the collide pass (graph contacts + awake-set non-touching).
+	int awakeContactCount;
+
+	/// Number of contacts recycled in the most recent step.
+	int recycledContactCount;
+
 } b2Counters;
-//! @endcond
 
 /// Joint type enumeration
 ///
@@ -537,6 +595,8 @@ typedef enum b2JointType
 	b2_distanceJoint,
 	b2_filterJoint,
 	b2_motorJoint,
+	b2_moverJoint,
+	b2_pogoJoint,
 	b2_prismaticJoint,
 	b2_revoluteJoint,
 	b2_weldJoint,
@@ -615,10 +675,10 @@ typedef struct b2DistanceJointDef
 	/// Enable/disable the joint limit
 	bool enableLimit;
 
-	/// Minimum length. Clamped to a stable minimum value.
+	/// Minimum length for limit. Clamped to a stable minimum value.
 	float minLength;
 
-	/// Maximum length. Must be greater than or equal to the minimum length.
+	/// Maximum length for limit. Must be greater than or equal to the minimum length.
 	float maxLength;
 
 	/// Enable/disable the joint motor
@@ -637,6 +697,22 @@ typedef struct b2DistanceJointDef
 /// Use this to initialize your joint definition
 /// @ingroup distance_joint
 B2_API b2DistanceJointDef b2DefaultDistanceJointDef( void );
+
+/// A filter joint is used to disable collision between two specific bodies.
+///
+/// @ingroup filter_joint
+typedef struct b2FilterJointDef
+{
+	/// Base joint definition
+	b2JointDef base;
+
+	/// Used internally to detect a valid definition. DO NOT SET.
+	int internalValue;
+} b2FilterJointDef;
+
+/// Use this to initialize your joint definition
+/// @ingroup filter_joint
+B2_API b2FilterJointDef b2DefaultFilterJointDef( void );
 
 /// A motor joint is used to control the relative velocity and or transform between two bodies.
 /// With a velocity of zero this acts like top-down friction.
@@ -684,21 +760,68 @@ typedef struct b2MotorJointDef
 /// @ingroup motor_joint
 B2_API b2MotorJointDef b2DefaultMotorJointDef( void );
 
-/// A filter joint is used to disable collision between two specific bodies.
-///
-/// @ingroup filter_joint
-typedef struct b2FilterJointDef
+/// A mover joint is used to move a dynamic character mover through velocity commands.
+/// The x and y directions are handled separately. Does not affect rotation.
+/// @ingroup mover_joint
+typedef struct b2MoverJointDef
 {
 	/// Base joint definition
 	b2JointDef base;
 
+	/// The desired linear velocity
+	b2Vec2 linearVelocity;
+
+	/// The maximum motor force in newtons.
+	b2Vec2 maxVelocityForce;
+
 	/// Used internally to detect a valid definition. DO NOT SET.
 	int internalValue;
-} b2FilterJointDef;
+} b2MoverJointDef;
 
 /// Use this to initialize your joint definition
-/// @ingroup filter_joint
-B2_API b2FilterJointDef b2DefaultFilterJointDef( void );
+/// @ingroup mover_joint
+B2_API b2MoverJointDef b2DefaultMoverJointDef( void );
+
+/// Pogo joint definition
+/// @ingroup pogo_joint
+typedef struct b2PogoJointDef
+{
+	/// Base joint definition
+	b2JointDef base;
+
+	/// Normal vector at the contact
+	b2Vec2 normal;
+
+	/// The spring stiffness Hertz, cycles per second
+	float hertz;
+
+	/// The spring damping ratio, non-dimensional
+	float dampingRatio;
+
+	/// Spring length.
+	float restLength;
+
+	/// Maximum tension force. Controls how sticky the mover is to ground.
+	float maxTensionForce;
+
+	/// Maximum compression force. How hard the pogo pushes the mover up from the ground.
+	float maxCompressionForce;
+
+	/// The initial pogo internal impulse. The pogo is typically recreated every frame. This
+	/// gives a way to move the internal state forward for smoother spring behavior.
+	float impulse;
+
+	/// The initial pogo internal velocity. The pogo is typically recreated every frame. This
+	/// gives a way to move the internal state forward for smoother spring behavior.
+	float velocity;
+
+	/// Used internally to detect a valid definition. DO NOT SET.
+	int internalValue;
+} b2PogoJointDef;
+
+/// Use this to initialize your joint definition
+/// @ingroup pogo_joint
+B2_API b2PogoJointDef b2DefaultPogoJointDef( void );
 
 /// Prismatic joint definition
 /// Body B may slide along the x-axis in local frame A. Body B cannot rotate relative to body A.
@@ -878,7 +1001,7 @@ typedef struct b2ExplosionDef
 	uint64_t maskBits;
 
 	/// The center of the explosion in world space
-	b2Vec2 position;
+	b2Pos position;
 
 	/// The radius of the explosion
 	float radius;
@@ -1005,10 +1128,16 @@ typedef struct b2ContactHitEvent
 	/// Id of the second shape
 	b2ShapeId shapeIdB;
 
-	/// Point where the shapes hit at the beginning of the time step.
-	/// This is a mid-point between the two surfaces. It could be at speculative
-	/// point where the two shapes were not touching at the beginning of the time step.
-	b2Vec2 point;
+	/// Id of the contact.
+	///	@warning this contact may have been destroyed
+	///	@see b2Contact_IsValid
+	b2ContactId contactId;
+
+	/// Point where the shapes hit. This is a mid-point between the two surfaces. It could be
+	/// a speculative point where the shapes were not touching at the beginning of the time
+	/// step. The point is reconstructed after the step, so when both bodies are moving it may
+	/// trail the impact by up to one step of motion.
+	b2Pos point;
 
 	/// Normal vector pointing from shape A to shape B
 	b2Vec2 normal;
@@ -1053,9 +1182,12 @@ typedef struct b2ContactEvents
 /// @note If sleeping is disabled all dynamic and kinematic bodies will trigger move events.
 typedef struct b2BodyMoveEvent
 {
+	/// The body user data.
 	void* userData;
-	b2Transform transform;
+	b2WorldTransform transform;
 	b2BodyId bodyId;
+
+	/// Did the body fall asleep this time step?
 	bool fellAsleep;
 } b2BodyMoveEvent;
 
@@ -1099,9 +1231,17 @@ typedef struct b2JointEvents
 /// @see b2Shape_GetContactData() and b2Body_GetContactData()
 typedef struct b2ContactData
 {
+	/// The contact id. You may hold onto this to track a contact across time steps.
+	/// This id may become orphaned. Use b2Contact_IsValid before using it for other functions.
 	b2ContactId contactId;
+
+	/// The first shape id.
 	b2ShapeId shapeIdA;
+
+	/// The second shape id.
 	b2ShapeId shapeIdB;
+
+	/// The manifold copied from the contact.
 	b2Manifold manifold;
 } b2ContactData;
 
@@ -1122,23 +1262,37 @@ typedef struct b2ContactData
 typedef bool b2CustomFilterFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, void* context );
 
 /// Prototype for a pre-solve callback.
-/// This is called after a contact is updated. This allows you to inspect a
-/// contact before it goes to the solver. If you are careful, you can modify the
-/// contact manifold (e.g. modify the normal).
+/// This is called after a contact manifold is updated. This allows you to inspect a
+/// manifold before it goes to the solver. If you are careful, you can modify the
+/// manifold (e.g. modify the normal). You can set the manifold point count to zero disable
+/// collision.
 /// Notes:
 /// - this function must be thread-safe
 /// - this is only called if the shape has enabled pre-solve events
 /// - this is called only for awake dynamic bodies
 /// - this is not called for sensors
-/// - the supplied manifold has impulse values from the previous step
-/// Return false if you want to disable the contact this step
+/// - the supplied manifold impulses are not reliable
 /// @warning Do not attempt to modify the world inside this callback
 /// @ingroup world
-typedef bool b2PreSolveFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal, void* context );
+typedef void b2PreSolveFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context );
+
+/// Prototype for a pre-continuous callback.
+/// This is called when a time of impact event is computed in continuous collision. This function
+/// can be used to skip the event. Unlike the pre-solve callback, this only supplies the point and normal.
+/// At this stage of the solver the manifold may not exist or may be stale.
+/// Notes:
+/// - this function must be thread-safe
+/// - this is only called if the shape has enabled pre-solve events
+/// - this is called only for awake dynamic bodies
+/// - this is not called for sensors
+/// Return false if you want to disable the time of impact event.
+/// @warning Do not attempt to modify the world inside this callback
+/// @ingroup world
+typedef bool b2PreContinuousFcn( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Pos point, b2Vec2 normal, void* context );
 
 /// Prototype callback for overlap queries.
 /// Called for each shape found in the query.
-/// @see b2World_OverlapABB
+/// @see b2World_OverlapAABB
 /// @return false to terminate the query.
 /// @ingroup world
 typedef bool b2OverlapResultFcn( b2ShapeId shapeId, void* context );
@@ -1159,7 +1313,7 @@ typedef bool b2OverlapResultFcn( b2ShapeId shapeId, void* context );
 /// @return -1 to filter, 0 to terminate, fraction to clip the ray for closest hit, 1 to continue
 /// @see b2World_CastRay
 /// @ingroup world
-typedef float b2CastResultFcn( b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal, float fraction, void* context );
+typedef float b2CastResultFcn( b2ShapeId shapeId, b2Pos point, b2Vec2 normal, float fraction, void* context );
 
 // Used to collect collision planes for character movers.
 // Return true to continue gathering planes.
@@ -1319,38 +1473,49 @@ typedef enum b2HexColor
 	b2_colorBox2DYellow = 0xFFEE8C
 } b2HexColor;
 
+/// Get the visualization color assigned to a constraint graph color slot. The last index
+/// (B2_GRAPH_COLOR_COUNT - 1) is the overflow color.
+B2_API b2HexColor b2GetGraphColor( int index );
+
 /// This struct holds callbacks you can implement to draw a Box2D world.
-/// This structure should be zero initialized.
+/// Callbacks receive world coordinates. In large world mode the translation is double precision so
+/// it stays accurate far from the origin. Shift into your own camera frame inside the callbacks.
+/// Initialize with b2DefaultDebugDraw.
 /// @ingroup world
 typedef struct b2DebugDraw
 {
 	/// Draw a closed polygon provided in CCW order.
-	void ( *DrawPolygonFcn )( const b2Vec2* vertices, int vertexCount, b2HexColor color, void* context );
+	void ( *DrawPolygonFcn )( b2WorldTransform transform, const b2Vec2* vertices, int vertexCount, b2HexColor color,
+							  void* context );
 
 	/// Draw a solid closed polygon provided in CCW order.
-	void ( *DrawSolidPolygonFcn )( b2Transform transform, const b2Vec2* vertices, int vertexCount, float radius, b2HexColor color,
-								void* context );
+	void ( *DrawSolidPolygonFcn )( b2WorldTransform transform, const b2Vec2* vertices, int vertexCount, float radius,
+								   b2HexColor color, void* context );
 
 	/// Draw a circle.
-	void ( *DrawCircleFcn )( b2Vec2 center, float radius, b2HexColor color, void* context );
+	void ( *DrawCircleFcn )( b2Pos center, float radius, b2HexColor color, void* context );
 
 	/// Draw a solid circle.
-	void ( *DrawSolidCircleFcn )( b2Transform transform, float radius, b2HexColor color, void* context );
+	void ( *DrawSolidCircleFcn )( b2WorldTransform transform, b2Vec2 center, float radius, b2HexColor color, void* context );
 
 	/// Draw a solid capsule.
-	void ( *DrawSolidCapsuleFcn )( b2Vec2 p1, b2Vec2 p2, float radius, b2HexColor color, void* context );
+	void ( *DrawSolidCapsuleFcn )( b2Pos p1, b2Pos p2, float radius, b2HexColor color, void* context );
 
 	/// Draw a line segment.
-	void ( *DrawLineFcn )( b2Vec2 p1, b2Vec2 p2, b2HexColor color, void* context );
+	void ( *DrawLineFcn )( b2Pos p1, b2Pos p2, b2HexColor color, void* context );
 
 	/// Draw a transform. Choose your own length scale.
-	void ( *DrawTransformFcn )( b2Transform transform, void* context );
+	void ( *DrawTransformFcn )( b2WorldTransform transform, void* context );
 
 	/// Draw a point.
-	void ( *DrawPointFcn )( b2Vec2 p, float size, b2HexColor color, void* context );
+	void ( *DrawPointFcn )( b2Pos p, float size, b2HexColor color, void* context );
 
 	/// Draw a string in world space
-	void ( *DrawStringFcn )( b2Vec2 p, const char* s, b2HexColor color, void* context );
+	void ( *DrawStringFcn )( b2Pos p, const char* s, b2HexColor color, void* context );
+
+	/// Draw a bounding box. With double precision enabled, the single precision bounding box
+	/// gets increasing padding when moving far from the origin.
+	void ( *DrawBoundsFcn )( b2AABB aabb, b2HexColor color, void* context );
 
 	/// World bounds to use for debug draw
 	b2AABB drawingBounds;
@@ -1361,8 +1526,17 @@ typedef struct b2DebugDraw
 	/// Global scaling for joint drawing
 	float jointScale;
 
+	/// Option to draw contact points
+	bool drawContacts;
+
+	/// Draw anchor A for contact points (instead of anchorB)
+	bool drawAnchorA;
+
 	/// Option to draw shapes
 	bool drawShapes;
+
+	/// Option to draw chain shape normals
+	bool drawChainNormals;
 
 	/// Option to draw joints
 	bool drawJoints;
@@ -1378,9 +1552,6 @@ typedef struct b2DebugDraw
 
 	/// Option to draw body names
 	bool drawBodyNames;
-
-	/// Option to draw contact points
-	bool drawContactPoints;
 
 	/// Option to visualize the graph coloring used for contacts and joints
 	bool drawGraphColors;

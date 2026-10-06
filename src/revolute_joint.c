@@ -9,6 +9,7 @@
 #include "core.h"
 #include "joint.h"
 #include "physics_world.h"
+#include "recording.h"
 #include "solver.h"
 #include "solver_set.h"
 
@@ -33,6 +34,8 @@
 
 void b2RevoluteJoint_EnableSpring( b2JointId jointId, bool enableSpring )
 {
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointEnableSpring, jointId, enableSpring );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	if ( enableSpring != joint->revoluteJoint.enableSpring )
 	{
@@ -49,6 +52,10 @@ bool b2RevoluteJoint_IsSpringEnabled( b2JointId jointId )
 
 void b2RevoluteJoint_SetSpringHertz( b2JointId jointId, float hertz )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( hertz ) );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetSpringHertz, jointId, hertz );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	joint->revoluteJoint.hertz = hertz;
 }
@@ -61,6 +68,10 @@ float b2RevoluteJoint_GetSpringHertz( b2JointId jointId )
 
 void b2RevoluteJoint_SetSpringDampingRatio( b2JointId jointId, float dampingRatio )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( dampingRatio ) );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetSpringDampingRatio, jointId, dampingRatio );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	joint->revoluteJoint.dampingRatio = dampingRatio;
 }
@@ -73,6 +84,10 @@ float b2RevoluteJoint_GetSpringDampingRatio( b2JointId jointId )
 
 void b2RevoluteJoint_SetTargetAngle( b2JointId jointId, float angle )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( angle ) );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetTargetAngle, jointId, angle );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	joint->revoluteJoint.targetAngle = angle;
 }
@@ -87,10 +102,8 @@ float b2RevoluteJoint_GetAngle( b2JointId jointId )
 {
 	b2World* world = b2GetWorld( jointId.world0 );
 	b2JointSim* jointSim = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
-	b2Transform transformA = b2GetBodyTransform( world, jointSim->bodyIdA );
-	b2Transform transformB = b2GetBodyTransform( world, jointSim->bodyIdB );
-	b2Rot qA = b2MulRot( transformA.q, jointSim->localFrameA.q );
-	b2Rot qB = b2MulRot( transformB.q, jointSim->localFrameB.q );
+	b2Rot qA = b2MulRot( b2GetBodyTransform( world, jointSim->bodyIdA ).q, jointSim->localFrameA.q );
+	b2Rot qB = b2MulRot( b2GetBodyTransform( world, jointSim->bodyIdB ).q, jointSim->localFrameB.q );
 
 	float angle = b2RelativeAngle( qA, qB );
 	return angle;
@@ -98,6 +111,8 @@ float b2RevoluteJoint_GetAngle( b2JointId jointId )
 
 void b2RevoluteJoint_EnableLimit( b2JointId jointId, bool enableLimit )
 {
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointEnableLimit, jointId, enableLimit );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	if ( enableLimit != joint->revoluteJoint.enableLimit )
 	{
@@ -127,22 +142,25 @@ float b2RevoluteJoint_GetUpperLimit( b2JointId jointId )
 
 void b2RevoluteJoint_SetLimits( b2JointId jointId, float lower, float upper )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( lower ) );
+	B2_CHECK_INPUT( b2IsValidFloat( upper ) );
+
 	B2_ASSERT( lower <= upper );
-	B2_ASSERT( lower >= -0.99f * B2_PI );
-	B2_ASSERT( upper <= 0.99f * B2_PI );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetLimits, jointId, lower, upper );
 
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
-	if ( lower != joint->revoluteJoint.lowerAngle || upper != joint->revoluteJoint.upperAngle )
-	{
-		joint->revoluteJoint.lowerAngle = b2MinFloat( lower, upper );
-		joint->revoluteJoint.upperAngle = b2MaxFloat( lower, upper );
-		joint->revoluteJoint.lowerImpulse = 0.0f;
-		joint->revoluteJoint.upperImpulse = 0.0f;
-	}
+	float lowerAngle = b2MinFloat( lower, upper );
+	float upperAngle = b2MaxFloat( lower, upper );
+	joint->revoluteJoint.lowerAngle = b2ClampFloat( lowerAngle, -0.99f * B2_PI, 0.99f * B2_PI );
+	joint->revoluteJoint.upperAngle = b2ClampFloat( upperAngle, -0.99f * B2_PI, 0.99f * B2_PI );
 }
 
 void b2RevoluteJoint_EnableMotor( b2JointId jointId, bool enableMotor )
 {
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointEnableMotor, jointId, enableMotor );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	if ( enableMotor != joint->revoluteJoint.enableMotor )
 	{
@@ -159,6 +177,10 @@ bool b2RevoluteJoint_IsMotorEnabled( b2JointId jointId )
 
 void b2RevoluteJoint_SetMotorSpeed( b2JointId jointId, float motorSpeed )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( motorSpeed ) );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetMotorSpeed, jointId, motorSpeed );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	joint->revoluteJoint.motorSpeed = motorSpeed;
 }
@@ -178,6 +200,10 @@ float b2RevoluteJoint_GetMotorTorque( b2JointId jointId )
 
 void b2RevoluteJoint_SetMaxMotorTorque( b2JointId jointId, float torque )
 {
+	B2_CHECK_INPUT( b2IsValidFloat( torque ) );
+
+	b2World* world = b2GetWorld( jointId.world0 );
+	B2_REC( world, RevoluteJointSetMaxMotorTorque, jointId, torque );
 	b2JointSim* joint = b2GetJointSimCheckType( jointId, b2_revoluteJoint );
 	joint->revoluteJoint.maxMotorTorque = torque;
 }
@@ -211,18 +237,18 @@ void b2PrepareRevoluteJoint( b2JointSim* base, b2StepContext* context )
 
 	b2World* world = context->world;
 
-	b2Body* bodyA = b2BodyArray_Get( &world->bodies, idA );
-	b2Body* bodyB = b2BodyArray_Get( &world->bodies, idB );
+	b2Body* bodyA = b2Array_Get( world->bodies, idA );
+	b2Body* bodyB = b2Array_Get( world->bodies, idB );
 
 	B2_ASSERT( bodyA->setIndex == b2_awakeSet || bodyB->setIndex == b2_awakeSet );
-	b2SolverSet* setA = b2SolverSetArray_Get( &world->solverSets, bodyA->setIndex );
-	b2SolverSet* setB = b2SolverSetArray_Get( &world->solverSets, bodyB->setIndex );
+	b2SolverSet* setA = b2Array_Get( world->solverSets, bodyA->setIndex );
+	b2SolverSet* setB = b2Array_Get( world->solverSets, bodyB->setIndex );
 
 	int localIndexA = bodyA->localIndex;
 	int localIndexB = bodyB->localIndex;
 
-	b2BodySim* bodySimA = b2BodySimArray_Get( &setA->bodySims, localIndexA );
-	b2BodySim* bodySimB = b2BodySimArray_Get( &setB->bodySims, localIndexB );
+	b2BodySim* bodySimA = b2Array_Get( setA->bodySims, localIndexA );
+	b2BodySim* bodySimB = b2Array_Get( setB->bodySims, localIndexB );
 
 	float mA = bodySimA->invMass;
 	float iA = bodySimA->invInertia;
@@ -250,7 +276,7 @@ void b2PrepareRevoluteJoint( b2JointSim* base, b2StepContext* context )
 	joint->frameB.p = b2RotateVector( bodySimB->transform.q, b2Sub( base->localFrameB.p, bodySimB->localCenter ) );
 
 	// Compute the initial center delta. Incremental position updates are relative to this.
-	joint->deltaCenter = b2Sub( bodySimB->center, bodySimA->center );
+	joint->deltaCenter = b2SubPos( bodySimB->center, bodySimA->center );
 
 	float k = iA + iB;
 	joint->axialMass = k > 0.0f ? 1.0f / k : 0.0f;
@@ -486,54 +512,32 @@ void b2SolveRevoluteJoint( b2JointSim* base, b2StepContext* context, bool useBia
 	}
 }
 
-#if 0
-void b2RevoluteJoint::Dump()
-{
-	int32 indexA = joint->bodyA->joint->islandIndex;
-	int32 indexB = joint->bodyB->joint->islandIndex;
-
-	b2Dump("  b2RevoluteJointDef jd;\n");
-	b2Dump("  jd.bodyA = bodies[%d];\n", indexA);
-	b2Dump("  jd.bodyB = bodies[%d];\n", indexB);
-	b2Dump("  jd.collideConnected = bool(%d);\n", joint->collideConnected);
-	b2Dump("  jd.localAnchorA.Set(%.9g, %.9g);\n", joint->localAnchorA.x, joint->localAnchorA.y);
-	b2Dump("  jd.localAnchorB.Set(%.9g, %.9g);\n", joint->localAnchorB.x, joint->localAnchorB.y);
-	b2Dump("  jd.referenceAngle = %.9g;\n", joint->referenceAngle);
-	b2Dump("  jd.enableLimit = bool(%d);\n", joint->enableLimit);
-	b2Dump("  jd.lowerAngle = %.9g;\n", joint->lowerAngle);
-	b2Dump("  jd.upperAngle = %.9g;\n", joint->upperAngle);
-	b2Dump("  jd.enableMotor = bool(%d);\n", joint->enableMotor);
-	b2Dump("  jd.motorSpeed = %.9g;\n", joint->motorSpeed);
-	b2Dump("  jd.maxMotorTorque = %.9g;\n", joint->maxMotorTorque);
-	b2Dump("  joints[%d] = joint->world->CreateJoint(&jd);\n", joint->index);
-}
-#endif
-
-void b2DrawRevoluteJoint( b2DebugDraw* draw, b2JointSim* base, b2Transform transformA, b2Transform transformB, float drawScale )
+void b2DrawRevoluteJoint( b2DebugDraw* draw, b2JointSim* base, b2WorldTransform transformA, b2WorldTransform transformB,
+						  float drawScale )
 {
 	B2_ASSERT( base->type == b2_revoluteJoint );
 
 	b2RevoluteJoint* joint = &base->revoluteJoint;
 
-	b2Transform frameA = b2MulTransforms( transformA, base->localFrameA );
-	b2Transform frameB = b2MulTransforms( transformB, base->localFrameB );
+	b2WorldTransform frameA = b2MulWorldTransforms( transformA, base->localFrameA );
+	b2WorldTransform frameB = b2MulWorldTransforms( transformB, base->localFrameB );
 
 	const float radius = 0.25f * drawScale;
 	draw->DrawCircleFcn( frameB.p, radius, b2_colorGray, draw->context );
 
 	b2Vec2 rx = { radius, 0.0f };
 	b2Vec2 r = b2RotateVector( frameA.q, rx );
-	draw->DrawLineFcn( frameA.p, b2Add( frameA.p, r ), b2_colorGray, draw->context );
+	draw->DrawLineFcn( frameA.p, b2OffsetPos( frameA.p, r ), b2_colorGray, draw->context );
 
 	r = b2RotateVector( frameB.q, rx );
-	draw->DrawLineFcn( frameB.p, b2Add( frameB.p, r ), b2_colorBlue, draw->context );
+	draw->DrawLineFcn( frameB.p, b2OffsetPos( frameB.p, r ), b2_colorBlue, draw->context );
 
 	if ( draw->drawJointExtras )
 	{
 		float jointAngle = b2RelativeAngle( frameA.q, frameB.q );
 		char buffer[32];
 		snprintf( buffer, 32, " %.1f deg", 180.0f * jointAngle / B2_PI );
-		draw->DrawStringFcn( b2Add( frameA.p, r ), buffer, b2_colorWhite, draw->context );
+		draw->DrawStringFcn( b2OffsetPos( frameA.p, r ), buffer, b2_colorWhite, draw->context );
 	}
 
 	float lowerAngle = joint->lowerAngle;
@@ -547,21 +551,25 @@ void b2DrawRevoluteJoint( b2DebugDraw* draw, b2JointSim* base, b2Transform trans
 		b2Rot rotHi = b2MulRot( frameA.q, b2MakeRot( upperAngle ) );
 		b2Vec2 rhi = b2RotateVector( rotHi, rx );
 
-		draw->DrawLineFcn( frameB.p, b2Add( frameB.p, rlo ), b2_colorGreen, draw->context );
-		draw->DrawLineFcn( frameB.p, b2Add( frameB.p, rhi ), b2_colorRed, draw->context );
+		draw->DrawLineFcn( frameB.p, b2OffsetPos( frameB.p, rlo ), b2_colorGreen, draw->context );
+		draw->DrawLineFcn( frameB.p, b2OffsetPos( frameB.p, rhi ), b2_colorRed, draw->context );
 	}
 
 	if ( joint->enableSpring )
 	{
 		b2Rot q = b2MulRot( frameA.q, b2MakeRot( joint->targetAngle ) );
 		b2Vec2 v = b2RotateVector( q, rx );
-		draw->DrawLineFcn( frameB.p, b2Add( frameB.p, v ), b2_colorViolet, draw->context );
+		draw->DrawLineFcn( frameB.p, b2OffsetPos( frameB.p, v ), b2_colorViolet, draw->context );
 	}
 
 	b2HexColor color = b2_colorGold;
-	draw->DrawLineFcn( transformA.p, frameA.p, color, draw->context );
 	draw->DrawLineFcn( frameA.p, frameB.p, color, draw->context );
-	draw->DrawLineFcn( transformB.p, frameB.p, color, draw->context );
+
+	if ( draw->drawJointExtras )
+	{
+		draw->DrawLineFcn( transformA.p, frameA.p, color, draw->context );
+		draw->DrawLineFcn( transformB.p, frameB.p, color, draw->context );
+	}
 
 	// char buffer[32];
 	// sprintf(buffer, "%.1f", b2Length(joint->impulse));

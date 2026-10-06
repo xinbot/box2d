@@ -1,4 +1,5 @@
 build/
+api/
 imgui.ini
 settings.ini
 .vscode/
@@ -6,6 +7,12 @@ CMakeSettings.json
 out/
 .vs/
 .DS_Store
+.build/
 CMakeUserPresets.json
 .cache/
 .idea/
+.tmp/
+*.b2rec
+zig-out/
+.zig-cache/
+zig-pkg

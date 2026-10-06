@@ -268,15 +268,9 @@ public:
 		assert( bodyIndex == m_bodyCount );
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 210.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 220.0f, height ) );
-
-		ImGui::Begin( "Overlap Recovery", nullptr, ImGuiWindowFlags_NoResize );
-		ImGui::PushItemWidth( 100.0f );
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 
 		bool changed = false;
 		changed = changed || ImGui::SliderFloat( "Extent", &m_extent, 0.1f, 1.0f, "%.1f" );
@@ -293,7 +287,8 @@ public:
 		}
 
 		ImGui::PopItemWidth();
-		ImGui::End();
+
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -313,6 +308,9 @@ public:
 
 static int sampleOverlapRecovery = RegisterSample( "Robustness", "Overlap Recovery", OverlapRecovery::Create );
 
+// A pyramid of 5cm squares. Stacking tiny objects is challenging for physics engines due to rotational effects.
+// This is also challenging for Box2D because of the AABB margin and linear slop are close to the shape size. This
+// leads to many collision pairs and some shape overlap.
 class TinyPyramid : public Sample
 {
 public:
@@ -362,7 +360,7 @@ public:
 
 	void Step() override
 	{
-		DrawTextLine( "%.1fcm squares", 200.0f * m_extent );
+		DrawScreenTextLine( "%.1fcm squares", 200.0f * m_extent );
 		Sample::Step();
 	}
 
@@ -485,15 +483,9 @@ public:
 		b2Joint_SetConstraintTuning( m_jointId2, m_constraintHertz, m_constraintDampingRatio );
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 240.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 320.0f, height ) );
-
-		ImGui::Begin( "Cart", nullptr, ImGuiWindowFlags_NoResize );
-		ImGui::PushItemWidth( 200.0f );
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 
 		bool changed = false;
 		ImGui::Text( "Contact" );
@@ -526,7 +518,8 @@ public:
 		}
 
 		ImGui::PopItemWidth();
-		ImGui::End();
+
+		return true;
 	}
 
 	static Sample* Create( SampleContext* context )

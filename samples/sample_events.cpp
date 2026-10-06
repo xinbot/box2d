@@ -4,8 +4,8 @@
 #include "donut.h"
 #include "draw.h"
 #include "human.h"
-#include "random.h"
 #include "sample.h"
+#include "utils.h"
 
 #include "box2d/box2d.h"
 #include "box2d/math_functions.h"
@@ -96,7 +96,7 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = points;
-			chainDef.count = count;
+			chainDef.pointCount = count;
 			chainDef.isLoop = true;
 			chainDef.materials = &material;
 			chainDef.materialCount = 1;
@@ -122,7 +122,7 @@ public:
 				b2RevoluteJointDef revoluteDef = b2DefaultRevoluteJointDef();
 				revoluteDef.base.bodyIdA = groundId;
 				revoluteDef.base.bodyIdB = bodyId;
-				revoluteDef.base.localFrameA.p = bodyDef.position;
+				revoluteDef.base.localFrameA.p = b2ToVec2( bodyDef.position );
 				revoluteDef.base.localFrameB.p = b2Vec2_zero;
 				revoluteDef.maxMotorTorque = 200.0f;
 				revoluteDef.motorSpeed = 2.0f * sign;
@@ -175,7 +175,7 @@ public:
 			return;
 		}
 
-		b2Vec2 center = { m_side, 29.5f };
+		b2Pos center = { m_side, 29.5f };
 
 		if ( m_type == e_donut )
 		{
@@ -234,15 +234,8 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 90.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 140.0f, height ) );
-
-		ImGui::Begin( "Sensor Event", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
-
 		if ( ImGui::RadioButton( "donut", m_type == e_donut ) )
 		{
 			Clear();
@@ -255,7 +248,7 @@ public:
 			m_type = e_human;
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
@@ -426,15 +419,8 @@ public:
 		m_visitorShapeId = b2CreateCircleShape( m_visitorBodyId, &shapeDef, &circle );
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 19.0f * fontSize;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 12.0f * fontSize, height ) );
-
-		ImGui::Begin( "Sensor Bookend", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
-
 		if ( B2_IS_NULL( m_visitorBodyId ) )
 		{
 			if ( ImGui::Button( "create visitor" ) )
@@ -553,7 +539,7 @@ public:
 			}
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
@@ -649,9 +635,9 @@ public:
 			m_sensorShapeId2 = b2_nullShapeId;
 		}
 
-		DrawTextLine( "visiting 1 == %s", m_isVisiting1 ? "true" : "false" );
-		DrawTextLine( "visiting 2 == %s", m_isVisiting2 ? "true" : "false" );
-		DrawTextLine( "sensors overlap count == %d", m_sensorsOverlapCount );
+		DrawScreenTextLine( "visiting 1 == %s", m_isVisiting1 ? "true" : "false" );
+		DrawScreenTextLine( "visiting 2 == %s", m_isVisiting2 ? "true" : "false" );
+		DrawScreenTextLine( "sensors overlap count == %d", m_sensorsOverlapCount );
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -700,9 +686,9 @@ public:
 			b2BodyDef bodyDef = b2DefaultBodyDef();
 			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
 
-			b2Vec2 points[20];
-			float x = 10.0f;
-			for ( int i = 0; i < 20; ++i )
+			b2Vec2 points[18];
+			float x = 9.0f;
+			for ( int i = 0; i < 18; ++i )
 			{
 				points[i] = { x, 0.0f };
 				x -= 1.0f;
@@ -710,7 +696,9 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = points;
-			chainDef.count = 20;
+			chainDef.pointCount = 18;
+			chainDef.ghost1 = { 10.0f, 0.0f };
+			chainDef.ghost2 = { -9.0f, 0.0f };
 			chainDef.filter.categoryBits = GROUND;
 			chainDef.filter.maskBits = FOOT | PLAYER;
 			chainDef.isLoop = false;
@@ -782,7 +770,7 @@ public:
 			}
 		}
 
-		DrawTextLine( "count == %d", m_overlapCount );
+		DrawScreenTextLine( "count == %d", m_overlapCount );
 
 		int capacity = b2Shape_GetSensorCapacity( m_sensorId );
 		m_visitorIds.clear();
@@ -793,7 +781,7 @@ public:
 			b2ShapeId shapeId = m_visitorIds[i];
 			b2AABB aabb = b2Shape_GetAABB( shapeId );
 			b2Vec2 point = b2AABB_Center( aabb );
-			DrawPoint( m_draw, point, 10.0f, b2_colorWhite );
+			DrawPoint( m_draw, b2ToPos( point ), 10.0f, b2_colorWhite );
 		}
 	}
 
@@ -839,7 +827,7 @@ public:
 			b2Vec2 points[] = { { 40.0f, -40.0f }, { -40.0f, -40.0f }, { -40.0f, 40.0f }, { 40.0f, 40.0f } };
 
 			b2ChainDef chainDef = b2DefaultChainDef();
-			chainDef.count = 4;
+			chainDef.pointCount = 4;
 			chainDef.points = points;
 			chainDef.isLoop = true;
 
@@ -926,25 +914,20 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 60.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
-
-		ImGui::Begin( "Contact Event", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
-
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 		ImGui::SliderFloat( "force", &m_force, 100.0f, 500.0f, "%.1f" );
+		ImGui::PopItemWidth();
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
 	{
-		DrawTextLine( "move using WASD" );
+		DrawScreenTextLine( "move using WASD" );
 
-		b2Vec2 position = b2Body_GetPosition( m_playerId );
+		b2Pos position = b2Body_GetPosition( m_playerId );
 
 		if ( glfwGetKey( m_context->window, GLFW_KEY_A ) == GLFW_PRESS )
 		{
@@ -1012,12 +995,17 @@ public:
 						b2Manifold manifold = contactData[j].manifold;
 						b2Vec2 normal = manifold.normal;
 						assert( b2AbsFloat( b2Length( normal ) - 1.0f ) < 4.0f * FLT_EPSILON );
+						b2BodyId bidA = b2Shape_GetBody( idA );
 
 						for ( int k = 0; k < manifold.pointCount; ++k )
 						{
 							b2ManifoldPoint point = manifold.points[k];
-							DrawLine( m_draw, point.point, point.point + point.totalNormalImpulse * normal, b2_colorBlueViolet );
-							DrawPoint( m_draw, point.point, 10.0f, b2_colorWhite );
+							b2Pos posA = b2Body_GetWorldCenter( bidA );
+							b2Pos p1 = posA + point.anchorA;
+							b2Pos p2 = p1 + point.totalNormalImpulse * normal;
+
+							DrawLine( m_draw, p1, p2, b2_colorBlueViolet );
+							DrawPoint( m_draw, p1, 10.0f, b2_colorWhite );
 						}
 					}
 				}
@@ -1042,12 +1030,17 @@ public:
 						b2Manifold manifold = contactData[j].manifold;
 						b2Vec2 normal = manifold.normal;
 						assert( b2AbsFloat( b2Length( normal ) - 1.0f ) < 4.0f * FLT_EPSILON );
+						b2BodyId bidA = b2Shape_GetBody( idA );
 
 						for ( int k = 0; k < manifold.pointCount; ++k )
 						{
 							b2ManifoldPoint point = manifold.points[k];
-							DrawLine( m_draw, point.point, point.point + point.totalNormalImpulse * normal, b2_colorYellowGreen );
-							DrawPoint( m_draw, point.point, 10.0f, b2_colorWhite );
+							b2Pos posA = b2Body_GetWorldCenter( bidA );
+							b2Pos p1 = posA + point.anchorA;
+							b2Pos p2 = p1 + point.totalNormalImpulse * normal;
+
+							DrawLine( m_draw, p1, p2, b2_colorYellowGreen );
+							DrawPoint( m_draw, p1, 10.0f, b2_colorWhite );
 						}
 					}
 				}
@@ -1128,14 +1121,14 @@ public:
 		{
 			int index = debrisToAttach[i];
 			b2BodyId debrisId = m_debrisIds[index];
-			if ( B2_IS_NULL( debrisId ) )
+			if ( b2Body_IsValid( debrisId ) == false )
 			{
 				continue;
 			}
 
-			b2Transform playerTransform = b2Body_GetTransform( m_playerId );
-			b2Transform debrisTransform = b2Body_GetTransform( debrisId );
-			b2Transform relativeTransform = b2InvMulTransforms( playerTransform, debrisTransform );
+			b2WorldTransform playerTransform = b2Body_GetTransform( m_playerId );
+			b2WorldTransform debrisTransform = b2Body_GetTransform( debrisId );
+			b2Transform relativeTransform = b2InvMulWorldTransforms( playerTransform, debrisTransform );
 
 			int shapeCount = b2Body_GetShapeCount( debrisId );
 			if ( shapeCount == 0 )
@@ -1198,7 +1191,7 @@ public:
 		if ( destroyCount > 0 )
 		{
 			// Update mass just once
-			b2Body_ApplyMassFromShapes( m_playerId );
+			b2Body_UpdateMassFromShapes( m_playerId );
 		}
 
 		if ( m_context->hertz > 0.0f && m_context->pause == false )
@@ -1226,241 +1219,6 @@ public:
 };
 
 static int sampleWeeble = RegisterSample( "Events", "Contact", ContactEvent::Create );
-
-// Shows how to make a rigid body character mover and use the pre-solve callback. In this
-// case the platform should get the pre-solve event, not the player.
-class Platform : public Sample
-{
-public:
-	explicit Platform( SampleContext* context )
-		: Sample( context )
-	{
-		if ( m_context->restart == false )
-		{
-			m_context->camera.center = { 0.5f, 7.5f };
-			m_context->camera.zoom = 25.0f * 0.4f;
-		}
-
-		b2World_SetPreSolveCallback( m_worldId, PreSolveStatic, this );
-
-		// Ground
-		{
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-			b2Segment segment = { { -20.0f, 0.0f }, { 20.0f, 0.0f } };
-			b2CreateSegmentShape( groundId, &shapeDef, &segment );
-		}
-
-		// Static Platform
-		// This tests pre-solve with continuous collision
-		{
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			bodyDef.type = b2_staticBody;
-			bodyDef.position = { -6.0f, 6.0f };
-			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
-
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-
-			// Need to turn this on to get the callback
-			shapeDef.enablePreSolveEvents = true;
-
-			b2Polygon box = b2MakeBox( 2.0f, 0.5f );
-			b2CreatePolygonShape( bodyId, &shapeDef, &box );
-		}
-
-		// Moving Platform
-		{
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			bodyDef.type = b2_kinematicBody;
-			bodyDef.position = { 0.0f, 6.0f };
-			bodyDef.linearVelocity = { 2.0f, 0.0f };
-			m_movingPlatformId = b2CreateBody( m_worldId, &bodyDef );
-
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-
-			// Need to turn this on to get the callback
-			shapeDef.enablePreSolveEvents = true;
-
-			b2Polygon box = b2MakeBox( 3.0f, 0.5f );
-			b2CreatePolygonShape( m_movingPlatformId, &shapeDef, &box );
-		}
-
-		// Player
-		{
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			bodyDef.type = b2_dynamicBody;
-			bodyDef.motionLocks.angularZ = true;
-			bodyDef.linearDamping = 0.5f;
-			bodyDef.position = { 0.0f, 1.0f };
-			m_playerId = b2CreateBody( m_worldId, &bodyDef );
-
-			m_radius = 0.5f;
-			b2Capsule capsule = { { 0.0f, 0.0f }, { 0.0f, 1.0f }, m_radius };
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-			shapeDef.material.friction = 0.1f;
-
-			m_playerShapeId = b2CreateCapsuleShape( m_playerId, &shapeDef, &capsule );
-		}
-
-		m_force = 25.0f;
-		m_impulse = 25.0f;
-		m_jumpDelay = 0.25f;
-		m_jumping = false;
-	}
-
-	static bool PreSolveStatic( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal, void* context )
-	{
-		Platform* self = static_cast<Platform*>( context );
-		return self->PreSolve( shapeIdA, shapeIdB, point, normal );
-	}
-
-	// This callback must be thread-safe. It may be called multiple times simultaneously.
-	// Notice how this method is constant and doesn't change any data. It also
-	// does not try to access any values in the world that may be changing, such as contact data.
-	bool PreSolve( b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Vec2 point, b2Vec2 normal ) const
-	{
-		assert( b2Shape_IsValid( shapeIdA ) );
-		assert( b2Shape_IsValid( shapeIdB ) );
-
-		float sign = 0.0f;
-		if ( B2_ID_EQUALS( shapeIdA, m_playerShapeId ) )
-		{
-			sign = -1.0f;
-		}
-		else if ( B2_ID_EQUALS( shapeIdB, m_playerShapeId ) )
-		{
-			sign = 1.0f;
-		}
-		else
-		{
-			// not colliding with the player, enable contact
-			return true;
-		}
-
-		if ( sign * normal.y > 0.95f )
-		{
-			return true;
-		}
-
-		// normal points down, disable contact
-		return false;
-	}
-
-	void UpdateGui() override
-	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 100.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
-
-		ImGui::Begin( "One-Sided Platform", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
-
-		ImGui::SliderFloat( "force", &m_force, 0.0f, 50.0f, "%.1f" );
-		ImGui::SliderFloat( "impulse", &m_impulse, 0.0f, 50.0f, "%.1f" );
-
-		ImGui::End();
-	}
-
-	void Step() override
-	{
-		bool canJump = false;
-		b2Vec2 velocity = b2Body_GetLinearVelocity( m_playerId );
-		if ( m_jumpDelay == 0.0f && m_jumping == false && velocity.y < 0.01f )
-		{
-			int capacity = b2Body_GetContactCapacity( m_playerId );
-			capacity = b2MinInt( capacity, 4 );
-			b2ContactData contactData[4];
-			int count = b2Body_GetContactData( m_playerId, contactData, capacity );
-			for ( int i = 0; i < count; ++i )
-			{
-				b2BodyId bodyIdA = b2Shape_GetBody( contactData[i].shapeIdA );
-				float sign = 0.0f;
-				if ( B2_ID_EQUALS( bodyIdA, m_playerId ) )
-				{
-					// normal points from A to B
-					sign = -1.0f;
-				}
-				else
-				{
-					sign = 1.0f;
-				}
-
-				if ( sign * contactData[i].manifold.normal.y > 0.9f )
-				{
-					canJump = true;
-					break;
-				}
-			}
-		}
-
-		// A kinematic body is moved by setting its velocity. This
-		// ensure friction works correctly.
-		b2Vec2 platformPosition = b2Body_GetPosition( m_movingPlatformId );
-		if ( platformPosition.x < -15.0f )
-		{
-			b2Body_SetLinearVelocity( m_movingPlatformId, { 2.0f, 0.0f } );
-		}
-		else if ( platformPosition.x > 15.0f )
-		{
-			b2Body_SetLinearVelocity( m_movingPlatformId, { -2.0f, 0.0f } );
-		}
-
-		if ( glfwGetKey( m_context->window, GLFW_KEY_A ) == GLFW_PRESS )
-		{
-			b2Body_ApplyForceToCenter( m_playerId, { -m_force, 0.0f }, true );
-		}
-
-		if ( glfwGetKey( m_context->window, GLFW_KEY_D ) == GLFW_PRESS )
-		{
-			b2Body_ApplyForceToCenter( m_playerId, { m_force, 0.0f }, true );
-		}
-
-		int keyState = glfwGetKey( m_context->window, GLFW_KEY_SPACE );
-		if ( keyState == GLFW_PRESS )
-		{
-			if ( canJump )
-			{
-				b2Body_ApplyLinearImpulseToCenter( m_playerId, { 0.0f, m_impulse }, true );
-				m_jumpDelay = 0.5f;
-				m_jumping = true;
-			}
-		}
-		else
-		{
-			m_jumping = false;
-		}
-
-		Sample::Step();
-
-		b2ContactData contactData = {};
-		int contactCount = b2Body_GetContactData( m_movingPlatformId, &contactData, 1 );
-		DrawTextLine( "Platform contact count = %d, point count = %d", contactCount, contactData.manifold.pointCount );
-		DrawTextLine( "Movement: A/D/Space" );
-		DrawTextLine( "Can jump = %s", canJump ? "true" : "false" );
-
-		if ( m_context->hertz > 0.0f )
-		{
-			m_jumpDelay = b2MaxFloat( 0.0f, m_jumpDelay - 1.0f / m_context->hertz );
-		}
-	}
-
-	static Sample* Create( SampleContext* context )
-	{
-		return new Platform( context );
-	}
-
-	bool m_jumping;
-	float m_radius;
-	float m_force;
-	float m_impulse;
-	float m_jumpDelay;
-	b2BodyId m_playerId;
-	b2ShapeId m_playerShapeId;
-	b2BodyId m_movingPlatformId;
-};
-
-static int samplePlatformer = RegisterSample( "Events", "Platformer", Platform::Create );
 
 // This shows how to process body events.
 class BodyMove : public Sample
@@ -1557,15 +1315,8 @@ public:
 		}
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 100.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 240.0f, height ) );
-
-		ImGui::Begin( "Body Move", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize );
-
 		if ( ImGui::Button( "Explode" ) )
 		{
 			b2ExplosionDef def = b2DefaultExplosionDef();
@@ -1576,9 +1327,11 @@ public:
 			b2World_Explode( m_worldId, &def );
 		}
 
+		ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
 		ImGui::SliderFloat( "Magnitude", &m_explosionMagnitude, -20.0f, 20.0f, "%.1f" );
+		ImGui::PopItemWidth();
 
-		ImGui::End();
+		return true;
 	}
 
 	void Step() override
@@ -1594,11 +1347,18 @@ public:
 		b2BodyEvents events = b2World_GetBodyEvents( m_worldId );
 		for ( int i = 0; i < events.moveCount; ++i )
 		{
-			// draw the transform of every body that moved (not sleeping)
 			const b2BodyMoveEvent* event = events.moveEvents + i;
+
+			if ( event->userData == nullptr )
+			{
+				// The mouse joint body has no user data
+				continue;
+			}
+
+			// draw the transform of every body that moved (not sleeping)
 			DrawTransform( m_draw, event->transform, 1.0f );
 
-			b2Transform transform = b2Body_GetTransform( event->bodyId );
+			b2WorldTransform transform = b2Body_GetTransform( event->bodyId );
 			B2_ASSERT( transform.p.x == event->transform.p.x );
 			B2_ASSERT( transform.p.y == event->transform.p.y );
 			B2_ASSERT( transform.q.c == event->transform.q.c );
@@ -1626,7 +1386,7 @@ public:
 
 		DrawCircle( m_draw, m_explosionPosition, m_explosionRadius, b2_colorAzure );
 
-		DrawTextLine( "sleep count: %d", m_sleepCount );
+		DrawScreenTextLine( "sleep count: %d", m_sleepCount );
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -1638,7 +1398,7 @@ public:
 	bool m_sleeping[e_count] = {};
 	int m_count;
 	int m_sleepCount;
-	b2Vec2 m_explosionPosition;
+	b2Pos m_explosionPosition;
 	float m_explosionRadius;
 	float m_explosionMagnitude;
 };
@@ -1791,12 +1551,12 @@ public:
 			start += snprintf( buffer + start, sizeof( buffer ) - start, "%s, ", name );
 		}
 
-		DrawTextLine( buffer );
+		DrawScreenTextLine( buffer );
 	}
 
 	void Step() override
 	{
-		b2Vec2 position = b2Body_GetPosition( m_kinematicBodyId );
+		b2Pos position = b2Body_GetPosition( m_kinematicBodyId );
 		if ( position.y < 0.0f )
 		{
 			b2Body_SetLinearVelocity( m_kinematicBodyId, { 0.0f, 1.0f } );
@@ -1813,7 +1573,7 @@ public:
 		PrintOverlaps( m_kinematicSensorId, "kinematic" );
 		PrintOverlaps( m_dynamicSensorId, "dynamic" );
 
-		b2Vec2 origin = { 5.0f, 1.0f };
+		b2Pos origin = { 5.0f, 1.0f };
 		b2Vec2 translation = { -10.0f, 0.0f };
 		b2RayResult result = b2World_CastRayClosest( m_worldId, origin, translation, b2DefaultQueryFilter() );
 		DrawLine( m_draw, origin, origin + translation, b2_colorDimGray );
@@ -1870,7 +1630,7 @@ public:
 			m_jointIds[i] = b2_nullJointId;
 		}
 
-		b2Vec2 position = { -12.5f, 10.0f };
+		b2Pos position = { -12.5f, 10.0f };
 		bodyDef.type = b2_dynamicBody;
 		bodyDef.enableSleep = false;
 
@@ -1890,8 +1650,8 @@ public:
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
 			float length = 2.0f;
-			b2Vec2 pivot1 = { position.x, position.y + 1.0f + length };
-			b2Vec2 pivot2 = { position.x, position.y + 1.0f };
+			b2Pos pivot1 = { position.x, position.y + 1.0f + length };
+			b2Pos pivot2 = { position.x, position.y + 1.0f };
 			b2DistanceJointDef jointDef = b2DefaultDistanceJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
@@ -1919,7 +1679,7 @@ public:
 			b2MotorJointDef jointDef = b2DefaultMotorJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
-			jointDef.base.localFrameA.p = position;
+			jointDef.base.localFrameA.p = b2ToVec2( position );
 			jointDef.maxVelocityForce = 1000.0f;
 			jointDef.maxVelocityTorque = 20.0f;
 			jointDef.base.forceThreshold = forceThreshold;
@@ -1940,7 +1700,7 @@ public:
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
-			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2Pos pivot = { position.x - 1.0f, position.y };
 			b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
@@ -1964,7 +1724,7 @@ public:
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
-			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2Pos pivot = { position.x - 1.0f, position.y };
 			b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
@@ -1988,7 +1748,7 @@ public:
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
-			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2Pos pivot = { position.x - 1.0f, position.y };
 			b2WeldJointDef jointDef = b2DefaultWeldJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
@@ -2014,7 +1774,7 @@ public:
 			b2BodyId bodyId = b2CreateBody( m_worldId, &bodyDef );
 			b2CreatePolygonShape( bodyId, &shapeDef, &box );
 
-			b2Vec2 pivot = { position.x - 1.0f, position.y };
+			b2Pos pivot = { position.x - 1.0f, position.y };
 			b2WheelJointDef jointDef = b2DefaultWheelJointDef();
 			jointDef.base.bodyIdA = groundId;
 			jointDef.base.bodyIdB = bodyId;
@@ -2054,7 +1814,7 @@ public:
 			{
 				int index = (int)(intptr_t)event->userData;
 				assert( 0 <= index && index < e_count );
-				b2DestroyJoint( event->jointId, true );
+				b2DestroyJoint( event->jointId );
 				m_jointIds[index] = b2_nullJointId;
 			}
 		}
@@ -2099,7 +1859,7 @@ public:
 
 			b2ChainDef chainDef = b2DefaultChainDef();
 			chainDef.points = points;
-			chainDef.count = 22;
+			chainDef.pointCount = 22;
 			chainDef.isLoop = true;
 
 			b2CreateChain( groundId, &chainDef );
@@ -2129,7 +1889,6 @@ public:
 		b2ContactEvents events = b2World_GetContactEvents( m_worldId );
 		for ( int i = 0; i < events.beginCount && i < 1; ++i )
 		{
-			b2ContactBeginTouchEvent event = events.beginEvents[i];
 			m_contactId = events.beginEvents[i].contactId;
 		}
 
@@ -2149,11 +1908,12 @@ public:
 			for ( int i = 0; i < data.manifold.pointCount; ++i )
 			{
 				const b2ManifoldPoint* manifoldPoint = data.manifold.points + i;
-				b2Vec2 p1 = manifoldPoint->point;
-				b2Vec2 p2 = p1 + manifoldPoint->totalNormalImpulse * data.manifold.normal;
+				b2BodyId bodyIdA = b2Shape_GetBody( data.shapeIdA );
+				b2Pos p1 = b2Body_GetWorldCenter( bodyIdA ) + manifoldPoint->anchorA;
+				b2Pos p2 = p1 + manifoldPoint->totalNormalImpulse * data.manifold.normal;
 				DrawLine( m_draw, p1, p2, b2_colorCrimson );
 				DrawPoint( m_draw, p1, 6.0f, b2_colorCrimson );
-				DrawWorldString( m_draw, m_camera, p1, b2_colorWhite, "%.2f", manifoldPoint->totalNormalImpulse );
+				DrawString( m_draw, m_camera, p1, b2_colorWhite, "%.2f", manifoldPoint->totalNormalImpulse );
 			}
 		}
 		else
@@ -2247,7 +2007,7 @@ public:
 			b2Capsule capsule = { { 0.0f, 1.0f }, { 0.0f, 9.0f }, 0.1f };
 			m_dynamicSensorId = b2CreateCapsuleShape( m_dynamicBodyId, &shapeDef, &capsule );
 
-			b2Vec2 pivot = bodyDef.position + b2Vec2{ 0.0f, 6.0f };
+			b2Pos pivot = bodyDef.position + b2Vec2{ 0.0f, 6.0f };
 			b2Vec2 axis = { 1.0f, 0.0f };
 			b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
 			jointDef.base.bodyIdA = groundId;
@@ -2300,15 +2060,8 @@ public:
 		m_shapeId = b2CreateCircleShape( m_bodyId, &shapeDef, &circle );
 	}
 
-	void UpdateGui() override
+	bool DrawControls() override
 	{
-		float fontSize = ImGui::GetFontSize();
-		float height = 120.0f;
-		ImGui::SetNextWindowPos( ImVec2( 0.5f * fontSize, m_camera->height - height - 2.0f * fontSize ), ImGuiCond_Once );
-		ImGui::SetNextWindowSize( ImVec2( 120.0f, height ) );
-
-		ImGui::Begin( "Sensor Hit", nullptr, ImGuiWindowFlags_NoResize );
-
 		ImGui::Checkbox( "Bullet", &m_isBullet );
 
 		if ( ImGui::Button( "Launch" ) || glfwGetKey( m_context->window, GLFW_KEY_B ) == GLFW_PRESS )
@@ -2316,7 +2069,7 @@ public:
 			Launch();
 		}
 
-		ImGui::End();
+		return true;
 	}
 
 	void CollectTransforms( b2ShapeId sensorShapeId )
@@ -2335,7 +2088,7 @@ public:
 
 	void Step() override
 	{
-		b2Vec2 p = b2Body_GetPosition( m_kinematicBodyId );
+		b2Pos p = b2Body_GetPosition( m_kinematicBodyId );
 		if ( p.x > 1.0f )
 		{
 			b2Body_SetLinearVelocity( m_kinematicBodyId, { -0.5f, 0.0f } );
@@ -2375,8 +2128,8 @@ public:
 			}
 		}
 
-		DrawTextLine( "begin touch count = %d", m_beginCount );
-		DrawTextLine( "end touch count = %d", m_endCount );
+		DrawScreenTextLine( "begin touch count = %d", m_beginCount );
+		DrawScreenTextLine( "end touch count = %d", m_endCount );
 	}
 
 	static Sample* Create( SampleContext* context )
@@ -2397,7 +2150,7 @@ public:
 
 	static constexpr int m_transformCapacity = 20;
 	int m_transformCount;
-	b2Transform m_transforms[m_transformCapacity];
+	b2WorldTransform m_transforms[m_transformCapacity];
 
 	bool m_isBullet;
 	int m_beginCount;
@@ -2437,8 +2190,8 @@ public:
 		m_projectileId = {};
 		m_projectileShapeId = {};
 		m_dragging = false;
-		m_point1 = b2Vec2_zero;
-		m_point2 = b2Vec2_zero;
+		m_point1 = b2Pos_zero;
+		m_point2 = b2Pos_zero;
 
 		b2Polygon box = b2MakeRoundedBox( 0.45f, 0.45f, 0.05f );
 
@@ -2483,7 +2236,7 @@ public:
 		m_projectileShapeId = b2CreateCircleShape( m_projectileId, &shapeDef, &circle );
 	}
 
-	void MouseDown( b2Vec2 p, int button, int mods ) override
+	void MouseDown( b2Pos p, int button, int mods ) override
 	{
 		if ( button == GLFW_MOUSE_BUTTON_1 )
 		{
@@ -2495,7 +2248,7 @@ public:
 		}
 	}
 
-	void MouseUp( b2Vec2, int button ) override
+	void MouseUp( b2Pos, int button ) override
 	{
 		if ( button == GLFW_MOUSE_BUTTON_1 )
 		{
@@ -2507,7 +2260,7 @@ public:
 		}
 	}
 
-	void MouseMove( b2Vec2 p ) override
+	void MouseMove( b2Pos p ) override
 	{
 		if ( m_dragging )
 		{
@@ -2517,7 +2270,7 @@ public:
 
 	void Step() override
 	{
-		DrawTextLine( "Use Ctrl + Left Mouse to drag and shoot a projectile" );
+		DrawScreenTextLine( "Use Ctrl + Left Mouse to drag and shoot a projectile" );
 
 		Sample::Step();
 
@@ -2542,7 +2295,8 @@ public:
 					if ( data.manifold.pointCount > 0 )
 					{
 						b2ExplosionDef explosionDef = b2DefaultExplosionDef();
-						explosionDef.position = data.manifold.points[0].point;
+						explosionDef.position =
+							b2Body_GetWorldCenter( b2Shape_GetBody( data.shapeIdA ) ) + data.manifold.points[0].anchorA;
 						explosionDef.radius = 1.0f;
 						explosionDef.impulsePerLength = 20.0f;
 						b2World_Explode( m_worldId, &explosionDef );
@@ -2564,9 +2318,150 @@ public:
 
 	b2BodyId m_projectileId;
 	b2ShapeId m_projectileShapeId;
-	b2Vec2 m_point1;
-	b2Vec2 m_point2;
+	b2Pos m_point1;
+	b2Pos m_point2;
 	bool m_dragging;
 };
 
 static int sampleProjectileEvent = RegisterSample( "Events", "Projectile Event", ProjectileEvent::Create );
+
+class CircleImpulse : public Sample
+{
+public:
+	struct Event
+	{
+		float impulse;
+		float totalImpulse;
+		float speed;
+	};
+
+	explicit CircleImpulse( SampleContext* context )
+		: Sample( context )
+	{
+		if ( m_context->restart == false )
+		{
+			m_context->camera.center = { 0.0f, 2.7f };
+			m_context->camera.zoom = 3.4f;
+		}
+
+		{
+			b2BodyDef bodyDef = b2DefaultBodyDef();
+			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
+
+			b2ShapeDef shapeDef = b2DefaultShapeDef();
+
+			b2Segment segment = { { -10.0f, 0.0f }, { 10.0f, 0.0f } };
+			b2CreateSegmentShape( groundId, &shapeDef, &segment );
+		}
+
+		m_gravity = 10.0f;
+		m_restitution = 0.25f;
+		m_useGravity = false;
+		m_useRestitution = false;
+		m_mass = 1.0f;
+		m_bodyId = b2_nullBodyId;
+
+		Spawn();
+	}
+
+	void Spawn()
+	{
+		if ( B2_IS_NON_NULL( m_bodyId ) )
+		{
+			b2DestroyBody( m_bodyId );
+			m_bodyId = b2_nullBodyId;
+		}
+
+		m_events.clear();
+
+		b2BodyDef bodyDef = b2DefaultBodyDef();
+		bodyDef.type = b2_dynamicBody;
+		bodyDef.gravityScale = m_useGravity ? 1.0f : 0.0f;
+		bodyDef.linearVelocity.y = -25.0f;
+		bodyDef.position.y = 5.5f;
+
+		b2Circle circle = {};
+		circle.radius = 0.25f;
+
+		b2ShapeDef shapeDef = b2DefaultShapeDef();
+		shapeDef.enableHitEvents = true;
+		shapeDef.material.friction = 0.0f;
+		shapeDef.material.restitution = m_useRestitution ? m_restitution : 0.0f;
+
+		m_bodyId = b2CreateBody( m_worldId, &bodyDef );
+
+		b2CreateCircleShape( m_bodyId, &shapeDef, &circle );
+
+		// Override mass
+		b2MassData massData = b2Body_GetMassData( m_bodyId );
+		float ratio = m_mass / massData.mass;
+		massData.mass = m_mass;
+		massData.rotationalInertia *= ratio;
+		b2Body_SetMassData( m_bodyId, massData );
+	}
+
+	bool DrawControls() override
+	{
+		if ( ImGui::Checkbox( "gravity", &m_useGravity ) )
+		{
+			Spawn();
+		}
+
+		if ( ImGui::Checkbox( "restitution", &m_useRestitution ) )
+		{
+			Spawn();
+		}
+
+		return true;
+	}
+
+	void Step() override
+	{
+		Sample::Step();
+
+		b2ContactEvents events = b2World_GetContactEvents( m_worldId );
+		for ( int i = 0; i < events.hitCount; ++i )
+		{
+			b2ContactHitEvent* event = events.hitEvents + i;
+
+			DrawPoint( m_draw, event->point, 10.0f, b2_colorWhite );
+
+			b2ContactData data = b2Contact_GetData( event->contactId );
+
+			Event e = {};
+			e.speed = event->approachSpeed;
+			if ( data.manifold.pointCount > 0 )
+			{
+				e.impulse = data.manifold.points[0].normalImpulse;
+				e.totalImpulse = data.manifold.points[0].totalNormalImpulse;
+			}
+			m_events.push_back( e );
+		}
+
+		DrawScreenTextLine( "mass = %g, gravity = %g, restitution = %g", m_mass, m_useGravity ? 10.0f : 0.0f,
+							m_useRestitution ? m_restitution : 0.0f );
+
+		int eventCount = (int)m_events.size();
+		for ( int i = 0; i < eventCount; ++i )
+		{
+			const Event& e = m_events[i];
+			DrawScreenTextLine( "hit speed = %g, hit momentum = %g, final impulse = %g, total impulse = %g", e.speed,
+								m_mass * e.speed, e.impulse, e.totalImpulse );
+		}
+	}
+
+	static Sample* Create( SampleContext* context )
+	{
+		return new CircleImpulse( context );
+	}
+
+	float m_mass;
+	std::vector<Event> m_events;
+	b2BodyId m_bodyId;
+	float m_gravity;
+	float m_restitution;
+	bool m_useGravity;
+	bool m_useRestitution;
+};
+
+static int sampleCircleImpulse = RegisterSample( "Events", "Circle Impulse", CircleImpulse::Create );

@@ -2,6 +2,7 @@ find_package(Doxygen REQUIRED dot)
 
 set(DOXYGEN_PROJECT_NAME "Box2D")
 set(DOXYGEN_GENERATE_HTML YES)
+set(DOXYGEN_GENERATE_XML YES)
 set(DOXYGEN_USE_MATHJAX YES)
 set(DOXYGEN_MATHJAX_VERSION MathJax_3)
 set(DOXYGEN_MATHJAX_FORMAT SVG)
@@ -25,11 +26,15 @@ set(DOXYGEN_LAYOUT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/layout.xml")
 
 set(DOXYGEN_INLINE_SIMPLE_STRUCTS YES)
 set(DOXYGEN_TYPEDEF_HIDES_STRUCT YES)
-# set(DOXYGEN_DISABLE_INDEX YES)
+# Drop the top tab bar, the tree carries the same navigation
+set(DOXYGEN_DISABLE_INDEX YES)
 set(DOXYGEN_GENERATE_TREEVIEW YES)
 set(DOXYGEN_FULL_SIDEBAR NO)
 
-# force dark mode to work with extra.css
+# No per-page outline panel on the right
+set(DOXYGEN_PAGE_OUTLINE_PANEL NO)
+
+# Dark theme baked by doxygen, extra.css only adds the Box2D accent
 set(DOXYGEN_HTML_COLORSTYLE DARK)
 
 # this tells doxygen to label structs as structs instead of classes
@@ -45,10 +50,13 @@ doxygen_add_docs(doc
                 "collision.md"
                 "simulation.md"
                 "loose_ends.md"
+                "recording.md"
+                "large_worlds.md"
                 "character.md"
                 "reading.md"
-                "faq.md"
+                "questions.md"
                 "migration.md"
                 "release_notes_v310.md"
                 ALL
                 COMMENT "Generate HTML documentation")
+                

@@ -29,12 +29,14 @@ the mover is trying to slide along a surface and we don't want to stop that even
 
 `b2World_CollideMover()` complements the cast function. This function generates collision planes for touching and/or overlapped surfaces. The character mover is assumed to have a fixed rotation, so it doesn't need contact manifolds or contact points. It just needs collision planes. Each plane is returned with the `b2Plane` and a `b2ShapeId` for each shape the mover is touching.
 
+Both mover functions take a `b2Pos` origin and the mover capsule is relative to it. Near the world origin pass `b2Pos_zero` and a world capsule. In [large world mode](#large-worlds) pass the mover's vicinity so the character stays precise far from the origin. The returned planes are relative to the same origin and feed `b2SolvePlanes()` directly.
+
 Once you have some collision planes from `b2World_CollideMover()`, you can process and filter them to generate an array of `b2CollisionPlane`. These collision planes can then be sent to `b2SolvePlanes()` to generate a new position for the mover
 that attempts to find the optimal new position given the current position.
 
 These collision planes support *soft collision* using a `pushLimit`. This push limit is a distance value. A rigid surface will have a push limit of `FLT_MAX`. However, you may want some surfaces to have a limited effect on the character. For example, you may want the mover to push through other players or enemies yet still resolve the collision so they are not overlapped. Another example is a door or elevator that could otherwise push the mover through the floor.
 
-Finally after calling `b2SolverPlanes()` you can call `b2ClipVector()` to clip your velocity vector so the mover will not keep trying to push into a wall, which could lead to a huge velocity accumulation otherwise.
+Finally after calling `b2SolvePlanes()` you can call `b2ClipVector()` to clip your velocity vector so the mover will not keep trying to push into a wall, which could lead to a huge velocity accumulation otherwise.
 
 The `Mover` sample shows all these functions being used together. It also includes other common character features such as acceleration and friction, jumping, and a pogo stick.
 
